@@ -1,3 +1,4 @@
+// Auth Mode: Open for networks with no passwords, WPA2 PSK with passwords
 #define LOCAL_BROKER_URL "mqtt://172.20.10.14:1884"
 #define PUBLIC_BROKER_URL "mqtt://test.mosquitto.org:1883"
 
@@ -16,9 +17,44 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 
+#include "string_type.h"
+
+void queue_task(void *pvParameters);
 void status_task(void *pvParameters);
 
+// Move to queue_message component once we get some functions going
+typedef enum {
+    STATUS_TASK,
+} TaskType;
+
+typedef struct {
+    TaskType task;
+} MainControlMessage;
+
+typedef enum {
+   SENDER_APP, 
+} SenderType;
+
+typedef struct {
+    String128 topic;
+    String128 payload;
+} BrokerMessage;
+
+typedef enum {
+    MSG_MAIN_CONTROL,
+    MSG_BROKER
+} MessageType;
+
+typedef struct {
+    MessageType type;
+    union {
+        MainControlMessage device;
+        BrokerMessage broker;
+    } data;
+} QueueMessage;
+
 esp_mqtt_client_handle_t client;
+QueueHandle_t message_queue;
 
 static const char *TAG = "mqtt_example";
 
@@ -42,8 +78,10 @@ static void log_error_if_nonzero(const char *message, int error_code)
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
-    esp_mqtt_event_handle_t event = event_data;
-    esp_mqtt_client_handle_t client = event->client;
+
+    esp_mqtt_event_handle_t event_info = event_data; // Tells us to treat this void * data as a pointer to an event struct
+    esp_mqtt_client_handle_t client = event_info->client;
+    
     int msg_id;
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
@@ -52,6 +90,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         // Subscribe to command topic (Change name to refelect location)
         esp_mqtt_client_subscribe(client, "/mainControl/commands", 1);
         
+        // Start queue task
+        message_queue = xQueueCreate(10, sizeof(QueueMessage)); 
+        xTaskCreate(&queue_task, "queue_task", 4096, NULL, 4, NULL);
         // Start status task
         xTaskCreate(&status_task, "status_task", 4096, NULL, 5, NULL);
 
@@ -61,33 +102,41 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         break;
 
     case MQTT_EVENT_SUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event_info->msg_id);
         msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
         ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event_info->msg_id);
         break;
     case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event_info->msg_id);
         break;
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        printf("DATA=%.*s\r\n", event->data_len, event->data);
+        String128 topic   = String128_create(event_info->topic, event_info->topic_len);
+        String128 payload = String128_create(event_info->data, event_info->data_len);
+
+        QueueMessage msg = {
+            .type = MSG_BROKER,
+            .data.broker.payload = payload,
+            .data.broker.topic   = topic 
+        };
+        
+        xQueueSend(message_queue, &msg, portMAX_DELAY);
         break;
     case MQTT_EVENT_ERROR:
         ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
-        if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-            log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
-            log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
-            log_error_if_nonzero("captured as transport's socket errno",  event->error_handle->esp_transport_sock_errno);
-            ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+        if (event_info->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
+            log_error_if_nonzero("reported from esp-tls", event_info->error_handle->esp_tls_last_esp_err);
+            log_error_if_nonzero("reported from tls stack", event_info->error_handle->esp_tls_stack_err);
+            log_error_if_nonzero("captured as transport's socket errno",  event_info->error_handle->esp_transport_sock_errno);
+            ESP_LOGI(TAG, "Last errno string (%s)", strerror(event_info->error_handle->esp_transport_sock_errno));
 
         }
         break;
     default:
-        ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+        ESP_LOGI(TAG, "Other event id:%d", event_info->event_id);
         break;
     }
 }
@@ -95,7 +144,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 static void mqtt_app_start(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = LOCAL_BROKER_URL
+        .broker.address.uri = PUBLIC_BROKER_URL
     };
 #if CONFIG_BROKER_URL_FROM_STDIN
     char line[128];
@@ -128,17 +177,42 @@ static void mqtt_app_start(void)
     esp_mqtt_client_start(client);
 }
 
-void status_task(void *pvParameters)
-{
+void queue_task(void *pvParameters) {
+    // esp_mqtt_event_handle_t event; 
+    QueueMessage msg;
     while (1) {
-        if (client)
-        {
-            int msg_id;
-            const char *status_message = "Main Control Alive";
-            msg_id = esp_mqtt_client_publish(client, "/mainControl/status", status_message, 0, 1, 0);
-            ESP_LOGI(TAG, "Published status message sent, msg_id=%d", msg_id);
+        if (xQueueReceive(message_queue, &(msg), portMAX_DELAY) == pdPASS) {
+            switch (msg.type) {
+                case MSG_MAIN_CONTROL:
+                    if (client) { // Possibly wrap this ?
+                        int msg_id;
+                        const char *status_message = "Main Control Alive";
+                        msg_id = esp_mqtt_client_publish(client, "/mainControl/status", status_message, 0, 1, 0);
+                        ESP_LOGI(TAG, "Published status message sent, msg_id=%d", msg_id);
+                    }
+                    break;
+                case MSG_BROKER:
+                    ESP_LOGI(TAG, "%.*s: %.*s",
+                        msg.data.broker.topic.length, msg.data.broker.topic.data, 
+                        msg.data.broker.payload.length, msg.data.broker.payload.data);
+                    break;
+            }
         }
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+    } 
+}
+
+void status_task(void *pvParameters) {
+    while (1) {
+        QueueMessage msg = { // Should this be scoped outside of the loop
+            .type = MSG_MAIN_CONTROL,
+            .data.device = {
+                .task = STATUS_TASK
+            }
+        };
+        if (xQueueSend(message_queue, &msg, portMAX_DELAY) != pdPASS) {
+           ESP_LOGE("STATUS_TASK", "Failed to send message to queue");
+        } 
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
     }
 }
 

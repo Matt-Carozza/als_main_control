@@ -1,3 +1,4 @@
 idf_component_register(SRCS "app_main.c"
-                    PRIV_REQUIRES mqtt nvs_flash esp_netif 
-                    INCLUDE_DIRS ".")
+                    PRIV_REQUIRES mqtt nvs_flash esp_netif
+                    REQUIRES string_type
+                    INCLUDE_DIRS "include")
