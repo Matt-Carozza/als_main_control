@@ -17,41 +17,12 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 
-#include "string_type.h"
+#include "protocol.h"
+
+// #include "string_type.h" PROB REMOVE
 
 void queue_task(void *pvParameters);
 void status_task(void *pvParameters);
-
-// Move to queue_message component once we get some functions going
-typedef enum {
-    STATUS_TASK,
-} TaskType;
-
-typedef struct {
-    TaskType task;
-} MainControlMessage;
-
-typedef enum {
-   SENDER_APP, 
-} SenderType;
-
-typedef struct {
-    String128 topic;
-    String128 payload;
-} BrokerMessage;
-
-typedef enum {
-    MSG_MAIN_CONTROL,
-    MSG_BROKER
-} MessageType;
-
-typedef struct {
-    MessageType type;
-    union {
-        MainControlMessage device;
-        BrokerMessage broker;
-    } data;
-} QueueMessage;
 
 esp_mqtt_client_handle_t client;
 QueueHandle_t message_queue;
@@ -114,15 +85,16 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         break;
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-        String128 topic   = String128_create(event_info->topic, event_info->topic_len);
-        String128 payload = String128_create(event_info->data, event_info->data_len);
 
-        QueueMessage msg = {
-            .type = MSG_BROKER,
-            .data.broker.payload = payload,
-            .data.broker.topic   = topic 
-        };
+        QueueMessage msg;
+        bool ok = false;
+        ok = parse_broker_message(event_info->data, &msg);
         
+        if (!ok) {
+            ESP_LOGE(TAG, "Error parsing message");
+            break;
+        }
+
         xQueueSend(message_queue, &msg, portMAX_DELAY);
         break;
     case MQTT_EVENT_ERROR:
@@ -178,23 +150,37 @@ static void mqtt_app_start(void)
 }
 
 void queue_task(void *pvParameters) {
-    // esp_mqtt_event_handle_t event; 
     QueueMessage msg;
     while (1) {
         if (xQueueReceive(message_queue, &(msg), portMAX_DELAY) == pdPASS) {
-            switch (msg.type) {
-                case MSG_MAIN_CONTROL:
-                    if (client) { // Possibly wrap this ?
-                        int msg_id;
-                        const char *status_message = "Main Control Alive";
-                        msg_id = esp_mqtt_client_publish(client, "/mainControl/status", status_message, 0, 1, 0);
-                        ESP_LOGI(TAG, "Published status message sent, msg_id=%d", msg_id);
+            switch (msg.device) {
+                case DEVICE_APP:
+                    switch (msg.app.action) // Wrap this in its own handler
+                    {
+                        case APP_STATUS:
+                            if (client && msg.app.payload.connected_to_broker == true) { // Possibly wrap this ?
+                                int msg_id;
+                                const char *status_message = "Main Control Alive";
+                                msg_id = esp_mqtt_client_publish(client, 
+                                    "/mainControl/status", 
+                                    status_message, 0, 1, 0);
+                                ESP_LOGI(TAG, "Published status message sent, msg_id=%d", msg_id);
+                            }
+                            break;
+                        default:
+                            break;
                     }
                     break;
-                case MSG_BROKER:
-                    ESP_LOGI(TAG, "%.*s: %.*s",
-                        msg.data.broker.topic.length, msg.data.broker.topic.data, 
-                        msg.data.broker.payload.length, msg.data.broker.payload.data);
+                case DEVICE_LIGHT:
+                    uint8_t r = msg.light.payload.r;
+                    uint8_t g = msg.light.payload.g;
+                    uint8_t b = msg.light.payload.b;
+                    ESP_LOGI(TAG, "%u %u %u", r, g, b);
+                    break;
+                case DEVICE_OCC_SENSOR:
+                    break;
+                case DEVICE_UNKNOWN:
+                    ESP_LOGE(TAG, "ERROR During Queue: Device Uknown");
                     break;
             }
         }
@@ -204,11 +190,16 @@ void queue_task(void *pvParameters) {
 void status_task(void *pvParameters) {
     while (1) {
         QueueMessage msg = { // Should this be scoped outside of the loop
-            .type = MSG_MAIN_CONTROL,
-            .data.device = {
-                .task = STATUS_TASK
+            .origin = ORIGIN_MAIN,
+            .device = DEVICE_APP,
+            .app = {
+                .action = APP_STATUS,
+                .payload = {
+                    .connected_to_broker = true,
+                }
             }
         };
+
         if (xQueueSend(message_queue, &msg, portMAX_DELAY) != pdPASS) {
            ESP_LOGE("STATUS_TASK", "Failed to send message to queue");
         } 
