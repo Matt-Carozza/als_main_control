@@ -1,3 +1,5 @@
+#pragma once 
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -19,7 +21,6 @@ typedef enum {
 
 typedef enum {
     APP_STATUS,
-    APP_STATE
 } AppAction;
 
 typedef enum {
@@ -54,13 +55,34 @@ typedef struct {
     };
 } QueueMessage;
 
+
+/*
+    Parsers
+*/
+
 bool parse_broker_message(const char* json, QueueMessage *msg);
+bool parse_app_message(cJSON *root, QueueMessage *msg); // Unfinished
+bool parse_light_message(cJSON *root, QueueMessage *msg);
+bool parse_light_set(cJSON *root, QueueMessage *out);
+
+/*
+    serializers 
+*/
+
+bool serialize_message(const QueueMessage *msg, char* out, size_t out_len);
+
+/*
+    Turns keys (string) found within JSON objects into corresponding enums
+*/
+
 MessageOrigin origin_from_string(const char *s);
 DeviceType device_from_string(const char *s);
-
-bool parse_app_message(cJSON *root, QueueMessage *msg);
-
-bool parse_light_message(cJSON *root, QueueMessage *msg);
 LightAction light_action_from_string(const char *s);
 
-bool parse_light_set(cJSON *root, QueueMessage *out);
+/*
+    Turns enumerations found within QueueMessage struct into corresponding strings
+*/
+
+const char* origin_to_string(MessageOrigin origin);
+const char* device_to_string(DeviceType device);
+const char* app_action_to_string(LightAction light_action);

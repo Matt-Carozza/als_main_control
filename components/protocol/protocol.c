@@ -4,8 +4,11 @@
 
 static const char *TAG = "PROTOCOL";
 
+static void serialize_app(cJSON* root, const QueueMessage *msg);
+
 static bool get_string(cJSON *obj, const char *key, const char** out);
 static bool get_u8(cJSON *obj, const char* key, uint8_t *out);
+
 
 bool parse_broker_message(const char* json, QueueMessage *out) {
     if (!out) return false;
@@ -48,17 +51,6 @@ fail:
     return ok;
 }
 
-MessageOrigin origin_from_string(const char *s) {
-    if (!strcmp(s, "MAIN")) return ORIGIN_MAIN;
-    if (!strcmp(s, "APP")) return ORIGIN_APP;
-    return ORIGIN_UKNOWN;
-}
-
-DeviceType device_from_string(const char *s) {
-    if (!strcmp(s, "APP")) return DEVICE_APP;
-    if (!strcmp(s, "LIGHT")) return DEVICE_LIGHT;
-    return DEVICE_UNKNOWN;
-}
 
 bool parse_app_message(cJSON *root, QueueMessage *out) {
     // Code here
@@ -89,11 +81,6 @@ bool parse_light_message(cJSON *root, QueueMessage *out) {
     }
 }
 
-LightAction light_action_from_string(const char *s) {
-    if (!strcmp(s, "SET")) return LIGHT_SET;
-    return LIGHT_UNKNOWN;
-}
-
 bool parse_light_set(cJSON *root, QueueMessage *out) {
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     if(!cJSON_IsObject(payload)) return false;
@@ -103,6 +90,114 @@ bool parse_light_set(cJSON *root, QueueMessage *out) {
         && get_u8(payload, "b", &out->light.payload.b);
         
     return true;
+}
+
+bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
+    cJSON *root = cJSON_CreateObject();
+    
+    cJSON_AddStringToObject(root, "origin", 
+                            origin_to_string(msg->origin));
+    cJSON_AddStringToObject(root, "device", 
+                            device_to_string(msg->device));
+    
+    switch (msg->device)
+    {
+        case DEVICE_APP:
+            serialize_app(root, msg);
+            break;
+        case DEVICE_LIGHT:
+            break;
+        case DEVICE_OCC_SENSOR:
+            break;
+        case DEVICE_UNKNOWN:
+            cJSON_Delete(root);
+            return false;
+        default:
+            cJSON_Delete(root);
+            return false;
+    }
+    
+    char *tmp = cJSON_PrintUnformatted(root);
+
+    if (!tmp) {
+       cJSON_Delete(root);
+       return false;
+    }
+    
+    strncpy(out, tmp, out_len);
+    out[out_len - 1] = '\0';
+    
+    free(tmp);
+    cJSON_Delete(root);
+    
+    return true;
+}
+
+static void serialize_app(cJSON* root, const QueueMessage *msg) {
+    cJSON_AddStringToObject(root, "action",
+                            app_action_to_string(msg->app.action)); 
+
+    cJSON *payload = cJSON_CreateObject();
+    cJSON_AddBoolToObject(payload, "connected_to_broker",
+                          msg->app.payload.connected_to_broker);
+    
+    cJSON_AddItemToObject(root, "payload", payload);
+}
+
+MessageOrigin origin_from_string(const char *s) {
+    if (!strcmp(s, "MAIN")) return ORIGIN_MAIN;
+    if (!strcmp(s, "APP")) return ORIGIN_APP;
+    return ORIGIN_UKNOWN;
+}
+
+DeviceType device_from_string(const char *s) {
+    if (!strcmp(s, "APP")) return DEVICE_APP;
+    if (!strcmp(s, "LIGHT")) return DEVICE_LIGHT;
+    return DEVICE_UNKNOWN;
+}
+
+LightAction light_action_from_string(const char *s) {
+    if (!strcmp(s, "SET")) return LIGHT_SET;
+    return LIGHT_UNKNOWN;
+}
+
+const char* origin_to_string(MessageOrigin origin) {
+    switch (origin)
+    {
+        case ORIGIN_APP:
+            return "APP";
+        case ORIGIN_MAIN:
+            return "MAIN";
+        case ORIGIN_UKNOWN:
+            return "UNKNOWN";
+        default:
+            return "UNKNOWN";
+    }
+}
+const char* device_to_string(DeviceType device) {
+    switch (device)
+    {
+        case DEVICE_APP:
+            return "APP";
+        case DEVICE_LIGHT:
+            return "LIGHT";
+        case DEVICE_OCC_SENSOR:
+            return "OCC";
+        case DEVICE_UNKNOWN:
+            return "UNKNOWN";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+const char* app_action_to_string(LightAction light_action) {
+    switch (light_action)
+    {
+        case APP_STATUS:
+            return "STATUS";
+        default:
+            return "UNKNOWN";
+    }
 }
 
 static bool get_string(cJSON *obj, const char *key, const char** out) {
