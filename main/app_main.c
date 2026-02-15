@@ -7,7 +7,10 @@
 #include "message_router.h"
 #include "transport_mqtt.h"
 #include "protocol.h"
+
 #include "mobile_app.h"
+#include "light.h"
+
 
 // #include "string_type.h" PROB REMOVE
 
@@ -27,10 +30,7 @@ void queue_task(void *pvParameters) {
                     mobile_app_handle(&msg);
                     break;
                 case DEVICE_LIGHT:
-                    uint8_t r = msg.light.payload.r;
-                    uint8_t g = msg.light.payload.g;
-                    uint8_t b = msg.light.payload.b;
-                    ESP_LOGI(TAG, "%u %u %u", r, g, b);
+                    light_handle(&msg);
                     break;
                 case DEVICE_OCC_SENSOR:
                     break;

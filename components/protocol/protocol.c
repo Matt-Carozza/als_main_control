@@ -17,7 +17,8 @@ static bool parse_light_set_wake_and_sleep(cJSON *root, QueueMessage *out);
 /*
  * Serializers
 */
-static void serialize_app(cJSON* root, const QueueMessage *msg);
+static bool serialize_app(cJSON* root, const QueueMessage *msg);
+static bool serialize_light(cJSON* root, const QueueMessage *msg);
 
 /*
  * Getters (refs)
@@ -132,19 +133,27 @@ static bool parse_light_set_wake_and_sleep(cJSON *root, QueueMessage *out) {
 }
 
 bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
+    if (!msg || !out || out_len == 0) return false;
+
     cJSON *root = cJSON_CreateObject();
     
-    cJSON_AddStringToObject(root, "origin", 
-                            origin_to_string(msg->origin));
-    cJSON_AddStringToObject(root, "device", 
-                            device_to_string(msg->device));
+    if (!cJSON_AddStringToObject(root, "origin", 
+            origin_to_string(msg->origin)) ||
+        !cJSON_AddStringToObject(root, "device", 
+            device_to_string(msg->device))) {
+        cJSON_Delete(root);
+        return false;
+    }
+    
+    bool ok = false;
     
     switch (msg->device)
     {
         case DEVICE_APP:
-            serialize_app(root, msg);
+            ok = serialize_app(root, msg);
             break;
         case DEVICE_LIGHT:
+            ok = serialize_light(root, msg);
             break;
         case DEVICE_OCC_SENSOR:
             break;
@@ -156,8 +165,12 @@ bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
             return false;
     }
     
+    if (!ok) {
+       cJSON_Delete(root);
+       return false; 
+    }
+    
     char *tmp = cJSON_PrintUnformatted(root);
-
     if (!tmp) {
        cJSON_Delete(root);
        return false;
@@ -168,19 +181,88 @@ bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
     
     free(tmp);
     cJSON_Delete(root);
-    
     return true;
 }
 
-static void serialize_app(cJSON* root, const QueueMessage *msg) {
-    cJSON_AddStringToObject(root, "action",
-                            app_action_to_string(msg->app.action)); 
-
+static bool serialize_app(cJSON* root, const QueueMessage *msg) {
+    
+    if (!root || !msg) return false;
+    
+    const char *action_str = app_action_to_string(msg->app.action);
+    
+    if (!action_str) return false;
+    
+    if (!cJSON_AddStringToObject(root, "action", action_str))
+        return false;
+    
     cJSON *payload = cJSON_CreateObject();
-    cJSON_AddBoolToObject(payload, "connected_to_broker",
-                          msg->app.payload.connected_to_broker);
+    if (!payload) return false;
+    
+    bool ok = false;
+    
+    switch (msg->app.action)
+    {
+    case APP_STATUS:
+        ok = cJSON_AddBoolToObject(payload, "connected_to_broker",
+                                   msg->app.payload.connected_to_broker);
+        break;
+    default:
+        cJSON_Delete(payload);
+        return false;
+    }
+    
+    if (!ok) {
+        cJSON_Delete(payload);
+        return false;
+    }
     
     cJSON_AddItemToObject(root, "payload", payload);
+
+    return true;
+}
+
+static bool serialize_light(cJSON* root, const QueueMessage *msg) {
+    if (!root || !msg) return false;
+    
+    const char *action_str = light_action_to_string(msg->light.action);
+    
+    if (!action_str) return false;
+    
+    if (!cJSON_AddStringToObject(root, "action", action_str))
+        return false;
+    
+    cJSON *payload = cJSON_CreateObject();
+    if (!payload) return false;
+    
+    bool ok = false;
+
+    switch (msg->light.action) 
+    {
+        case LIGHT_SET_RGB:
+            ok = 
+                cJSON_AddNumberToObject(payload, "r", msg->light.payload.r) &&
+                cJSON_AddNumberToObject(payload, "g", msg->light.payload.g) &&
+                cJSON_AddNumberToObject(payload, "b", msg->light.payload.b);
+            break;
+        case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
+            // Does data even need to go to the lights?
+            // Maybe just the initial value of the "adaptive lighting mode" 
+            // Should the "toggle adaptive lighting mode" also send the current time as a command too?
+            ok = true;
+            break;
+        default:
+            cJSON_Delete(payload);
+            return false;
+    }
+    
+    if (!ok) {
+       cJSON_Delete(payload); 
+       return false;
+    }
+    
+    cJSON_AddItemToObject(root, "payload", payload);
+
+    return true;
 }
 
 MessageOrigin origin_from_string(const char *s) {
@@ -230,13 +312,25 @@ const char* device_to_string(DeviceType device) {
     }
 }
 
-const char* app_action_to_string(LightAction light_action) {
-    switch (light_action)
+const char* app_action_to_string(AppAction app_action) {
+    switch (app_action)
     {
         case APP_STATUS:
             return "STATUS";
         default:
-            return "UNKNOWN";
+            return NULL;
+    }
+}
+
+const char* light_action_to_string(LightAction light_action) {
+    switch (light_action)
+    {
+        case LIGHT_SET_RGB:
+            return "SET_RGB";
+        case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
+            return "TOGGLE_ADAPTIVE_LIGHTING_MODE";
+        default:
+            return NULL;
     }
 }
 

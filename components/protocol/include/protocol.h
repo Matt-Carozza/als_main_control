@@ -79,4 +79,5 @@ LightAction light_action_from_string(const char *s);
 
 const char* origin_to_string(MessageOrigin origin);
 const char* device_to_string(DeviceType device);
-const char* app_action_to_string(LightAction light_action);
+const char* app_action_to_string(AppAction app_action);
+const char* light_action_to_string(LightAction app_action);
