@@ -16,7 +16,7 @@ void mobile_app_handle(const QueueMessage *msg) {
                     return;
                 }
 
-                int msg_id = mqtt_transport_publish("/status", json_buf); 
+                int msg_id = mqtt_transport_publish("/als/status", json_buf); 
                 ESP_LOGI(TAG, "Published status message sent, msg_id=%d", msg_id);
             }
             break;

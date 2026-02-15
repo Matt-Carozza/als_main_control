@@ -57,7 +57,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         mqtt_connected = true;
 
         // Subscribe to command topic (Change name to refelect location)
-        esp_mqtt_client_subscribe(client, "/mainControl/commands", 1);
+        esp_mqtt_client_subscribe(client, "/als/commands", 1);
         
         break;
     case MQTT_EVENT_DISCONNECTED:
@@ -85,7 +85,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             log_error_if_nonzero("reported from tls stack", event_info->error_handle->esp_tls_stack_err);
             log_error_if_nonzero("captured as transport's socket errno",  event_info->error_handle->esp_transport_sock_errno);
             ESP_LOGI(TAG, "Last errno string (%s)", strerror(event_info->error_handle->esp_transport_sock_errno));
-
         }
         break;
     default:

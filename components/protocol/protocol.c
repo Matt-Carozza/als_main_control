@@ -1,13 +1,35 @@
 #include <stdio.h>
+#include <string.h>
+#include <ctype.h>
 #include "protocol.h"
 #include "cJSON.h"
 
 static const char *TAG = "PROTOCOL";
+/*
+ * Parsers
+*/
+static bool parse_app_message(cJSON *root, QueueMessage *out);
 
+static bool parse_light_message(cJSON *root, QueueMessage *out);
+static bool parse_light_set_rgb(cJSON *root, QueueMessage *out);
+static bool parse_light_set_wake_and_sleep(cJSON *root, QueueMessage *out);
+
+/*
+ * Serializers
+*/
 static void serialize_app(cJSON* root, const QueueMessage *msg);
 
-static bool get_string(cJSON *obj, const char *key, const char** out);
+/*
+ * Getters (refs)
+*/
+static bool get_string_ref(cJSON *obj, const char *key, const char** out);
+
+/*
+ * Getters (copies)
+*/
 static bool get_u8(cJSON *obj, const char* key, uint8_t *out);
+static bool get_bool(cJSON *obj, const char* key, bool *out);
+static bool get_time_hhmm(cJSON *obj, const char* key, char out[6]);
 
 
 bool parse_broker_message(const char* json, QueueMessage *out) {
@@ -21,8 +43,8 @@ bool parse_broker_message(const char* json, QueueMessage *out) {
 
     if (!root) goto fail;
 
-    if (!get_string(root, "origin", &origin)) goto fail;
-    if (!get_string(root, "device", &device_from_message)) goto fail;
+    if (!get_string_ref(root, "origin", &origin)) goto fail;
+    if (!get_string_ref(root, "device", &device_from_message)) goto fail;
     
     out->origin = origin_from_string(origin);
     out->device = device_from_string(device_from_message);
@@ -52,27 +74,25 @@ fail:
 }
 
 
-bool parse_app_message(cJSON *root, QueueMessage *out) {
+static bool parse_app_message(cJSON *root, QueueMessage *out) {
     // Code here
     bool ok = false;
     return ok;
 }
 
-bool parse_light_message(cJSON *root, QueueMessage *out) {
+static bool parse_light_message(cJSON *root, QueueMessage *out) {
     const char *action;
-    if(!get_string(root, "action", &action)) return false;
+    if(!get_string_ref(root, "action", &action)) return false;
     
     out->light.action = light_action_from_string(action);
     
     switch (out->light.action)
     {
-        case LIGHT_SET:
-            /* code */
-            return parse_light_set(root, out); 
+        case LIGHT_SET_RGB:
+            return parse_light_set_rgb(root, out); 
             break;
-        case LIGHT_UNKNOWN:
-            ESP_LOGI(TAG, "Unknown light action: %s", action);
-            return false;
+        case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
+            return parse_light_set_wake_and_sleep(root, out); 
             break;
         default:
             ESP_LOGI(TAG, "Unknown light action: %s", action);
@@ -81,15 +101,34 @@ bool parse_light_message(cJSON *root, QueueMessage *out) {
     }
 }
 
-bool parse_light_set(cJSON *root, QueueMessage *out) {
+static bool parse_light_set_rgb(cJSON *root, QueueMessage *out) {
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
-    if(!cJSON_IsObject(payload)) return false;
+    if (!cJSON_IsObject(payload)) return false;
 
     return get_u8(payload, "r", &out->light.payload.r)
         && get_u8(payload, "g", &out->light.payload.g)
         && get_u8(payload, "b", &out->light.payload.b);
-        
-    return true;
+}
+
+static bool parse_light_set_wake_and_sleep(cJSON *root, QueueMessage *out) {
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if(!cJSON_IsObject(payload)) return false;
+    
+    if(!get_bool(payload, 
+                 "enabled", 
+                 &out->light.payload.enabled))
+        return false;
+    
+    if (!out->light.payload.enabled) {
+        return true;
+    }
+
+    return get_time_hhmm(payload,
+                         "wake_time",
+                         out->light.payload.wake_time)
+        && get_time_hhmm(payload, 
+                         "sleep_time",   
+                         out->light.payload.sleep_time);
 }
 
 bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
@@ -157,7 +196,8 @@ DeviceType device_from_string(const char *s) {
 }
 
 LightAction light_action_from_string(const char *s) {
-    if (!strcmp(s, "SET")) return LIGHT_SET;
+    if (!strcmp(s, "SET_RGB")) return LIGHT_SET_RGB;
+    if (!strcmp(s, "TOGGLE_ADAPTIVE_LIGHTING_MODE")) return LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE;
     return LIGHT_UNKNOWN;
 }
 
@@ -200,7 +240,7 @@ const char* app_action_to_string(LightAction light_action) {
     }
 }
 
-static bool get_string(cJSON *obj, const char *key, const char** out) {
+static bool get_string_ref(cJSON *obj, const char *key, const char** out) {
     cJSON *item = cJSON_GetObjectItem(obj, key);
     if (!cJSON_IsString(item)) return false;
     *out = item->valuestring;
@@ -211,9 +251,35 @@ static bool get_u8(cJSON *obj, const char* key, uint8_t *out) {
    cJSON *item = cJSON_GetObjectItem(obj, key); 
    if (!cJSON_IsNumber(item)) return false;
 
-   double v = item->valuedouble;
+   int v = item->valuedouble; // Maybe swap back to double?
    if (v < 0 || v > 255) return false;
    
    *out = (uint8_t)v;
    return true;
+}
+
+static bool get_bool(cJSON *obj, const char* key, bool *out) {
+    cJSON *item = cJSON_GetObjectItem(obj, key);
+    if (!cJSON_IsBool(item)) return false;
+    
+    bool b = item->valueint;
+    *out = b;
+    return true;
+}
+
+static bool get_time_hhmm(cJSON *obj, const char* key, char out[6]) {
+    cJSON *item = cJSON_GetObjectItem(obj, key);
+    if (!cJSON_IsString(item)) return false;
+    const char *s = item->valuestring;
+    if (strlen(s) != 5) return false;
+    if (s[2] != ':') return false;
+
+    if (!isdigit((unsigned char)s[0]) ||
+        !isdigit((unsigned char)s[1]) ||
+        !isdigit((unsigned char)s[3]) ||
+        !isdigit((unsigned char)s[4]))
+        return false;
+
+    memcpy(out, s, 6);
+    return true;
 }

@@ -24,14 +24,20 @@ typedef enum {
 } AppAction;
 
 typedef enum {
-    LIGHT_SET,
+    LIGHT_SET_RGB,
+    LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE,
     LIGHT_UNKNOWN 
 } LightAction;
 
 typedef struct {
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
+    union {
+        struct { uint8_t r, g, b; };
+        struct { 
+            bool enabled;
+            char wake_time[6]; 
+            char sleep_time[6]; 
+        };
+    };
 } LightPayload;
 
 typedef struct {
@@ -56,19 +62,7 @@ typedef struct {
 } QueueMessage;
 
 
-/*
-    Parsers
-*/
-
 bool parse_broker_message(const char* json, QueueMessage *msg);
-bool parse_app_message(cJSON *root, QueueMessage *msg); // Unfinished
-bool parse_light_message(cJSON *root, QueueMessage *msg);
-bool parse_light_set(cJSON *root, QueueMessage *out);
-
-/*
-    serializers 
-*/
-
 bool serialize_message(const QueueMessage *msg, char* out, size_t out_len);
 
 /*
