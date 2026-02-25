@@ -20,6 +20,14 @@ void light_handle(const QueueMessage *msg) {
             break;
             
         case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
+            ESP_LOGI(TAG, "LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE: %u", 
+                msg->light.payload.toggle_adaptive_lighting_mode.room_id);
+            if (msg->light.payload.toggle_adaptive_lighting_mode.enabled) {
+                ESP_LOGI(TAG, "Wake Time: %s", 
+                    msg->light.payload.toggle_adaptive_lighting_mode.wake_time);
+                ESP_LOGI(TAG, "Sleep Time: %s",
+                    msg->light.payload.toggle_adaptive_lighting_mode.sleep_time);
+            }
             break;
         default:
             break;

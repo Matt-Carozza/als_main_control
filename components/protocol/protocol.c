@@ -12,7 +12,7 @@ static bool parse_app_message(cJSON *root, QueueMessage *out);
 
 static bool parse_light_message(cJSON *root, QueueMessage *out);
 static bool parse_light_set_rgb(cJSON *root, QueueMessage *out);
-static bool parse_light_set_wake_and_sleep(cJSON *root, QueueMessage *out);
+static bool parse_light_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out);
 
 /*
  * Serializers
@@ -93,7 +93,7 @@ static bool parse_light_message(cJSON *root, QueueMessage *out) {
             return parse_light_set_rgb(root, out); 
             break;
         case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
-            return parse_light_set_wake_and_sleep(root, out); 
+            return parse_light_toggle_adaptive_lighting_mode(root, out); 
             break;
         default:
             ESP_LOGI(TAG, "Unknown light action: %s", action);
@@ -111,25 +111,28 @@ static bool parse_light_set_rgb(cJSON *root, QueueMessage *out) {
         && get_u8(payload, "b", &out->light.payload.b);
 }
 
-static bool parse_light_set_wake_and_sleep(cJSON *root, QueueMessage *out) {
+static bool parse_light_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out) {
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     if(!cJSON_IsObject(payload)) return false;
     
     if(!get_bool(payload, 
                  "enabled", 
-                 &out->light.payload.enabled))
+                 &out->light.payload.toggle_adaptive_lighting_mode.enabled) ||
+       !get_u8(payload,
+                 "room_id",
+                 &out->light.payload.toggle_adaptive_lighting_mode.room_id))
         return false;
     
-    if (!out->light.payload.enabled) {
+    if (!out->light.payload.toggle_adaptive_lighting_mode.enabled) {
         return true;
     }
 
     return get_time_hhmm(payload,
                          "wake_time",
-                         out->light.payload.wake_time)
+                         out->light.payload.toggle_adaptive_lighting_mode.wake_time)
         && get_time_hhmm(payload, 
                          "sleep_time",   
-                         out->light.payload.sleep_time);
+                         out->light.payload.toggle_adaptive_lighting_mode.sleep_time);
 }
 
 bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {

@@ -33,10 +33,11 @@ typedef struct {
     union {
         struct { uint8_t r, g, b; };
         struct { 
+            uint8_t room_id;
             bool enabled;
             char wake_time[6]; 
             char sleep_time[6]; 
-        };
+        } toggle_adaptive_lighting_mode;
     };
 } LightPayload;
 
@@ -57,7 +58,6 @@ typedef struct {
            LightAction action;
            LightPayload payload;
        } light;
-       // Main Control Action / Payload
     };
 } QueueMessage;
 

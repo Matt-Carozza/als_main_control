@@ -24,10 +24,10 @@ bool message_router_push_wire(const char *json) {
     return xQueueSend(message_queue, &msg, portMAX_DELAY);
 }
 
-bool message_router_push_local(QueueMessage* msg) {
+bool message_router_push_local(const QueueMessage* msg) {
     return xQueueSend(message_queue, msg, 0);
-
 }
+
 bool message_router_receive(QueueMessage* msg) {
    return xQueueReceive(message_queue, msg, portMAX_DELAY); 
 }
