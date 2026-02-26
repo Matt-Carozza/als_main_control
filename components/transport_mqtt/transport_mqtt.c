@@ -58,7 +58,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
         // Subscribe to command topic (Change name to refelect location)
         esp_mqtt_client_subscribe(client, "/als/commands", 1);
-        
+        esp_mqtt_client_subscribe(client, "/als/status/heartbeat", 1);
+        esp_mqtt_client_subscribe(client, "/als/status/occ/1", 1);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");

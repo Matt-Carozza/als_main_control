@@ -9,10 +9,12 @@
 typedef enum {
     ORIGIN_MAIN,
     ORIGIN_APP,
+    ORIGIN_OCC_SENSOR,
     ORIGIN_UKNOWN
 } MessageOrigin;
 
 typedef enum {
+    DEVICE_MAIN,
     DEVICE_APP,
     DEVICE_LIGHT,
     DEVICE_OCC_SENSOR,
@@ -22,6 +24,25 @@ typedef enum {
 typedef enum {
     APP_STATUS,
 } AppAction;
+
+typedef enum {
+    // OCC
+    MAIN_HEARTBEAT_UPDATE,
+    MAIN_OCCUPANCY_UPDATE,
+    MAIN_UNKNOWN
+} MainAction;
+
+typedef struct {
+    union {
+        struct {
+            bool connected_to_broker;
+        } heartbeat_update;
+        struct {
+            bool occupied;
+            uint8_t room_id; 
+        } occupancy_update;
+    };
+} MainPayload;
 
 typedef enum {
     LIGHT_SET_RGB,
@@ -50,6 +71,10 @@ typedef struct {
     DeviceType device;
     
     union {
+        struct {
+            MainAction action;
+            MainPayload payload;
+        } main;
        struct {
            AppAction action;
            AppPayload payload;
@@ -71,6 +96,7 @@ bool serialize_message(const QueueMessage *msg, char* out, size_t out_len);
 
 MessageOrigin origin_from_string(const char *s);
 DeviceType device_from_string(const char *s);
+MainAction main_action_from_string(const char *s);
 LightAction light_action_from_string(const char *s);
 
 /*

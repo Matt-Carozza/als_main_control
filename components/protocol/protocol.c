@@ -9,7 +9,11 @@ static const char *TAG = "PROTOCOL";
  * Parsers
 */
 static bool parse_app_message(cJSON *root, QueueMessage *out);
-
+// Main
+static bool parse_main_message(cJSON *root, QueueMessage *out);
+static bool parse_main_heartbeat_update(cJSON *root, QueueMessage *out);
+static bool parse_main_occupancy_update(cJSON *root, QueueMessage *out);
+// Light
 static bool parse_light_message(cJSON *root, QueueMessage *out);
 static bool parse_light_set_rgb(cJSON *root, QueueMessage *out);
 static bool parse_light_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out);
@@ -79,6 +83,43 @@ static bool parse_app_message(cJSON *root, QueueMessage *out) {
     // Code here
     bool ok = false;
     return ok;
+}
+
+static bool parse_main_message(cJSON *root, QueueMessage *out) {
+    const char *action;
+    if (!get_string_ref(root, "action", &action)) return false;
+    
+    out->main.action = main_action_from_string(action);
+    
+    switch (out->main.action)
+    {
+        case MAIN_HEARTBEAT_UPDATE:
+            return parse_main_heartbeat_update(root, out);
+            break;
+        case MAIN_OCCUPANCY_UPDATE:
+            return parse_main_occupancy_update(root, out);
+            break;
+        default:
+            ESP_LOGI(TAG, "Unknown main action: %s", action);
+            return false;
+    }
+    return true;
+}
+
+static bool parse_main_heartbeat_update(cJSON *root, QueueMessage *out) {
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (!cJSON_IsObject(payload)) return false;
+
+    return get_bool(payload, "connected_to_broker", 
+        &out->main.payload.heartbeat_update.connected_to_broker);
+}
+
+static bool parse_main_occupancy_update(cJSON *root, QueueMessage *out) {
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (!cJSON_IsObject(payload)) return false;
+
+    return get_bool(payload, "occupied", &out->main.payload.occupancy_update.occupied) &&
+           get_u8(payload, "room_id", &out->main.payload.occupancy_update.room_id);
 }
 
 static bool parse_light_message(cJSON *root, QueueMessage *out) {
@@ -152,6 +193,9 @@ bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
     
     switch (msg->device)
     {
+        case DEVICE_MAIN:
+            /* code */
+            break;
         case DEVICE_APP:
             ok = serialize_app(root, msg);
             break;
@@ -271,13 +315,22 @@ static bool serialize_light(cJSON* root, const QueueMessage *msg) {
 MessageOrigin origin_from_string(const char *s) {
     if (!strcmp(s, "MAIN")) return ORIGIN_MAIN;
     if (!strcmp(s, "APP")) return ORIGIN_APP;
+    if (!strcmp(s, "OCC")) return ORIGIN_OCC_SENSOR;
     return ORIGIN_UKNOWN;
 }
 
 DeviceType device_from_string(const char *s) {
+    if (!strcmp(s, "MAIN")) return DEVICE_MAIN;
     if (!strcmp(s, "APP")) return DEVICE_APP;
     if (!strcmp(s, "LIGHT")) return DEVICE_LIGHT;
+    if (!strcmp(s, "OCC")) return DEVICE_OCC_SENSOR;
     return DEVICE_UNKNOWN;
+}
+
+MainAction main_action_from_string(const char *s) {
+    if (!strcmp(s, "HEARTBEAT_UPDATE")) return MAIN_HEARTBEAT_UPDATE;
+    if (!strcmp(s, "OCC_UPDATE")) return MAIN_OCCUPANCY_UPDATE;
+    return MAIN_UNKNOWN;
 }
 
 LightAction light_action_from_string(const char *s) {
@@ -293,15 +346,20 @@ const char* origin_to_string(MessageOrigin origin) {
             return "APP";
         case ORIGIN_MAIN:
             return "MAIN";
+        case ORIGIN_OCC_SENSOR:
+            return "OCC";
         case ORIGIN_UKNOWN:
             return "UNKNOWN";
         default:
             return "UNKNOWN";
     }
 }
+
 const char* device_to_string(DeviceType device) {
     switch (device)
     {
+        case DEVICE_MAIN:
+            return "MAIN";
         case DEVICE_APP:
             return "APP";
         case DEVICE_LIGHT:
