@@ -56,6 +56,9 @@ bool parse_broker_message(const char* json, QueueMessage *out) {
     
     switch (out->device)
     {
+        case DEVICE_MAIN:
+            ok = parse_main_message(root, out);
+            break;
         case DEVICE_APP:
             /* code */
             break;

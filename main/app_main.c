@@ -8,6 +8,7 @@
 #include "transport_mqtt.h"
 #include "protocol.h"
 
+#include "main_control.h"
 #include "mobile_app.h"
 #include "light.h"
 
@@ -26,6 +27,9 @@ void queue_task(void *pvParameters) {
     while (1) {
         if (message_router_receive(&msg) == pdPASS) {
             switch (msg.device) {
+                case DEVICE_MAIN:
+                    main_control_handle(&msg);
+                    break;
                 case DEVICE_APP:
                     mobile_app_handle(&msg);
                     break;
@@ -58,7 +62,7 @@ void status_task(void *pvParameters) {
         if (message_router_push_local(&msg) != pdPASS) { 
             ESP_LOGE("STATUS_TASK", "Failed to send message to queue");
         } 
-        vTaskDelay(10000 / portTICK_PERIOD_MS);
+        vTaskDelay(60000 / portTICK_PERIOD_MS);
     }
 }
 
