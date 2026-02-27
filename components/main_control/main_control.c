@@ -40,6 +40,16 @@ void main_control_handle(const QueueMessage *msg) {
                 ESP_LOGE("STATUS_TASK", "Failed to send message to queue");
             } 
             break;
+        case MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE:
+            ESP_LOGI(TAG, "MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE: %u", 
+                msg->main.payload.toggle_adaptive_lighting_mode.room_id);
+            if (msg->main.payload.toggle_adaptive_lighting_mode.enabled) {
+                ESP_LOGI(TAG, "Wake Time: %s", 
+                    msg->main.payload.toggle_adaptive_lighting_mode.wake_time);
+                ESP_LOGI(TAG, "Sleep Time: %s",
+                    msg->main.payload.toggle_adaptive_lighting_mode.sleep_time);
+            }
+            break;
         default:
             break;
     }

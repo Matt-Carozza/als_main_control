@@ -29,6 +29,7 @@ typedef enum {
     // OCC
     MAIN_HEARTBEAT_UPDATE,
     MAIN_OCCUPANCY_UPDATE,
+    MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE,
     MAIN_UNKNOWN
 } MainAction;
 
@@ -41,12 +42,17 @@ typedef struct {
             bool occupied;
             uint8_t room_id; 
         } occupancy_update;
+        struct { 
+            uint8_t room_id;
+            bool enabled;
+            char wake_time[6]; 
+            char sleep_time[6]; 
+        } toggle_adaptive_lighting_mode;
     };
 } MainPayload;
 
 typedef enum {
     LIGHT_SET_RGB,
-    LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE,
     LIGHT_UNKNOWN 
 } LightAction;
 
@@ -55,12 +61,6 @@ typedef struct {
         struct { 
             uint8_t room_id, r, g, b; 
         } set_rgb;
-        struct { 
-            uint8_t room_id;
-            bool enabled;
-            char wake_time[6]; 
-            char sleep_time[6]; 
-        } toggle_adaptive_lighting_mode;
     };
 } LightPayload;
 

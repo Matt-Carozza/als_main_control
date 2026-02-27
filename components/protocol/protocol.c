@@ -16,7 +16,7 @@ static bool parse_main_occupancy_update(cJSON *root, QueueMessage *out);
 // Light
 static bool parse_light_message(cJSON *root, QueueMessage *out);
 static bool parse_light_set_rgb(cJSON *root, QueueMessage *out);
-static bool parse_light_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out);
+static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out);
 
 /*
  * Serializers
@@ -102,6 +102,9 @@ static bool parse_main_message(cJSON *root, QueueMessage *out) {
         case MAIN_OCCUPANCY_UPDATE:
             return parse_main_occupancy_update(root, out);
             break;
+        case MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE:
+            return parse_main_toggle_adaptive_lighting_mode(root, out); 
+            break;
         default:
             ESP_LOGI(TAG, "Unknown main action: %s", action);
             return false;
@@ -136,9 +139,6 @@ static bool parse_light_message(cJSON *root, QueueMessage *out) {
         case LIGHT_SET_RGB:
             return parse_light_set_rgb(root, out); 
             break;
-        case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
-            return parse_light_toggle_adaptive_lighting_mode(root, out); 
-            break;
         default:
             ESP_LOGI(TAG, "Unknown light action: %s", action);
             return false;
@@ -156,28 +156,28 @@ static bool parse_light_set_rgb(cJSON *root, QueueMessage *out) {
         && get_u8(payload, "b", &out->light.payload.set_rgb.b);
 }
 
-static bool parse_light_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out) {
+static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out) {
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     if(!cJSON_IsObject(payload)) return false;
     
     if(!get_bool(payload, 
                  "enabled", 
-                 &out->light.payload.toggle_adaptive_lighting_mode.enabled) ||
+                 &out->main.payload.toggle_adaptive_lighting_mode.enabled) ||
        !get_u8(payload,
                  "room_id",
-                 &out->light.payload.toggle_adaptive_lighting_mode.room_id))
+                 &out->main.payload.toggle_adaptive_lighting_mode.room_id))
         return false;
     
-    if (!out->light.payload.toggle_adaptive_lighting_mode.enabled) {
+    if (!out->main.payload.toggle_adaptive_lighting_mode.enabled) {
         return true;
     }
 
     return get_time_hhmm(payload,
                          "wake_time",
-                         out->light.payload.toggle_adaptive_lighting_mode.wake_time)
+                         out->main.payload.toggle_adaptive_lighting_mode.wake_time)
         && get_time_hhmm(payload, 
                          "sleep_time",   
-                         out->light.payload.toggle_adaptive_lighting_mode.sleep_time);
+                         out->main.payload.toggle_adaptive_lighting_mode.sleep_time);
 }
 
 bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
@@ -296,12 +296,6 @@ static bool serialize_light(cJSON* root, const QueueMessage *msg) {
                 cJSON_AddNumberToObject(payload, "g", msg->light.payload.set_rgb.g) &&
                 cJSON_AddNumberToObject(payload, "b", msg->light.payload.set_rgb.b);
             break;
-        case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
-            // Does data even need to go to the lights?
-            // Maybe just the initial value of the "adaptive lighting mode" 
-            // Should the "toggle adaptive lighting mode" also send the current time as a command too?
-            ok = true;
-            break;
         default:
             cJSON_Delete(payload);
             return false;
@@ -340,7 +334,7 @@ MainAction main_action_from_string(const char *s) {
 
 LightAction light_action_from_string(const char *s) {
     if (!strcmp(s, "SET_RGB")) return LIGHT_SET_RGB;
-    if (!strcmp(s, "TOGGLE_ADAPTIVE_LIGHTING_MODE")) return LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE;
+    if (!strcmp(s, "TOGGLE_ADAPTIVE_LIGHTING_MODE")) return MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE;
     return LIGHT_UNKNOWN;
 }
 
@@ -393,8 +387,6 @@ const char* light_action_to_string(LightAction light_action) {
     {
         case LIGHT_SET_RGB:
             return "SET_RGB";
-        case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
-            return "TOGGLE_ADAPTIVE_LIGHTING_MODE";
         default:
             return NULL;
     }
