@@ -150,9 +150,10 @@ static bool parse_light_set_rgb(cJSON *root, QueueMessage *out) {
     cJSON *payload = cJSON_GetObjectItem(root, "payload");
     if (!cJSON_IsObject(payload)) return false;
 
-    return get_u8(payload, "r", &out->light.payload.r)
-        && get_u8(payload, "g", &out->light.payload.g)
-        && get_u8(payload, "b", &out->light.payload.b);
+    return get_u8(payload, "room_id", &out->light.payload.set_rgb.room_id)
+        && get_u8(payload, "r", &out->light.payload.set_rgb.r)
+        && get_u8(payload, "g", &out->light.payload.set_rgb.g)
+        && get_u8(payload, "b", &out->light.payload.set_rgb.b);
 }
 
 static bool parse_light_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out) {
@@ -252,13 +253,13 @@ static bool serialize_app(cJSON* root, const QueueMessage *msg) {
     
     switch (msg->app.action)
     {
-    case APP_STATUS:
-        ok = cJSON_AddBoolToObject(payload, "connected_to_broker",
-                                   msg->app.payload.connected_to_broker);
-        break;
-    default:
-        cJSON_Delete(payload);
-        return false;
+        case APP_STATUS:
+            ok = cJSON_AddBoolToObject(payload, "connected_to_broker",
+                                       msg->app.payload.connected_to_broker);
+            break;
+        default:
+            cJSON_Delete(payload);
+            return false;
     }
     
     if (!ok) {
@@ -290,9 +291,10 @@ static bool serialize_light(cJSON* root, const QueueMessage *msg) {
     {
         case LIGHT_SET_RGB:
             ok = 
-                cJSON_AddNumberToObject(payload, "r", msg->light.payload.r) &&
-                cJSON_AddNumberToObject(payload, "g", msg->light.payload.g) &&
-                cJSON_AddNumberToObject(payload, "b", msg->light.payload.b);
+                cJSON_AddNumberToObject(payload, "room_id", msg->light.payload.set_rgb.room_id) &&
+                cJSON_AddNumberToObject(payload, "r", msg->light.payload.set_rgb.r) &&
+                cJSON_AddNumberToObject(payload, "g", msg->light.payload.set_rgb.g) &&
+                cJSON_AddNumberToObject(payload, "b", msg->light.payload.set_rgb.b);
             break;
         case LIGHT_TOGGLE_ADAPTIVE_LIGHTING_MODE:
             // Does data even need to go to the lights?

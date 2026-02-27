@@ -52,7 +52,9 @@ typedef enum {
 
 typedef struct {
     union {
-        struct { uint8_t r, g, b; };
+        struct { 
+            uint8_t room_id, r, g, b; 
+        } set_rgb;
         struct { 
             uint8_t room_id;
             bool enabled;
