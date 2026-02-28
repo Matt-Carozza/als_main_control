@@ -13,6 +13,8 @@ static bool parse_app_message(cJSON *root, QueueMessage *out);
 static bool parse_main_message(cJSON *root, QueueMessage *out);
 static bool parse_main_heartbeat_update(cJSON *root, QueueMessage *out);
 static bool parse_main_occupancy_update(cJSON *root, QueueMessage *out);
+static bool parse_main_day_update(cJSON *root, QueueMessage *out);
+
 // Light
 static bool parse_light_message(cJSON *root, QueueMessage *out);
 static bool parse_light_set_rgb(cJSON *root, QueueMessage *out);
@@ -35,6 +37,7 @@ static bool get_string_ref(cJSON *obj, const char *key, const char** out);
 static bool get_u8(cJSON *obj, const char* key, uint8_t *out);
 static bool get_bool(cJSON *obj, const char* key, bool *out);
 static bool get_time_hhmm(cJSON *obj, const char* key, char out[6]);
+static bool get_float(cJSON *obj, const char* key, float *out);
 
 
 bool parse_broker_message(const char* json, QueueMessage *out) {
@@ -105,6 +108,8 @@ static bool parse_main_message(cJSON *root, QueueMessage *out) {
         case MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE:
             return parse_main_toggle_adaptive_lighting_mode(root, out); 
             break;
+        case MAIN_DAY_UPDATE:
+            return parse_main_day_update(root, out);
         default:
             ESP_LOGI(TAG, "Unknown main action: %s", action);
             return false;
@@ -126,6 +131,15 @@ static bool parse_main_occupancy_update(cJSON *root, QueueMessage *out) {
 
     return get_bool(payload, "occupied", &out->main.payload.occupancy_update.occupied) &&
            get_u8(payload, "room_id", &out->main.payload.occupancy_update.room_id);
+}
+
+static bool parse_main_day_update(cJSON *root, QueueMessage *out) {
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (!cJSON_IsObject(payload)) return false; 
+    
+    return get_u8(payload, "room_id", &out->main.payload.day_update.room_id) &&
+           get_float(payload, "voltage", &out->main.payload.day_update.voltage); 
+
 }
 
 static bool parse_light_message(cJSON *root, QueueMessage *out) {
@@ -315,6 +329,7 @@ MessageOrigin origin_from_string(const char *s) {
     if (!strcmp(s, "MAIN")) return ORIGIN_MAIN;
     if (!strcmp(s, "APP")) return ORIGIN_APP;
     if (!strcmp(s, "OCC")) return ORIGIN_OCC_SENSOR;
+    if (!strcmp(s, "DAY")) return ORIGIN_DAY_SENSOR;
     return ORIGIN_UKNOWN;
 }
 
@@ -329,6 +344,7 @@ DeviceType device_from_string(const char *s) {
 MainAction main_action_from_string(const char *s) {
     if (!strcmp(s, "HEARTBEAT_UPDATE")) return MAIN_HEARTBEAT_UPDATE;
     if (!strcmp(s, "OCC_UPDATE")) return MAIN_OCCUPANCY_UPDATE;
+    if (!strcmp(s, "DAY_UPDATE")) return MAIN_DAY_UPDATE;
     return MAIN_UNKNOWN;
 }
 
@@ -347,6 +363,8 @@ const char* origin_to_string(MessageOrigin origin) {
             return "MAIN";
         case ORIGIN_OCC_SENSOR:
             return "OCC";
+        case ORIGIN_DAY_SENSOR:
+            return "DAY";
         case ORIGIN_UKNOWN:
             return "UNKNOWN";
         default:
@@ -416,6 +434,15 @@ static bool get_bool(cJSON *obj, const char* key, bool *out) {
     
     bool b = item->valueint;
     *out = b;
+    return true;
+}
+
+static bool get_float(cJSON *obj, const char* key, float *out) {
+    cJSON *item = cJSON_GetObjectItem(obj, key);
+    if (!cJSON_IsNumber(item)) return false;
+    
+    float f = (float)item->valuedouble;
+    *out = f;
     return true;
 }
 

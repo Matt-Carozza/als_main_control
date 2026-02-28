@@ -10,6 +10,7 @@ typedef enum {
     ORIGIN_MAIN,
     ORIGIN_APP,
     ORIGIN_OCC_SENSOR,
+    ORIGIN_DAY_SENSOR,
     ORIGIN_UKNOWN
 } MessageOrigin;
 
@@ -30,6 +31,7 @@ typedef enum {
     MAIN_HEARTBEAT_UPDATE,
     MAIN_OCCUPANCY_UPDATE,
     MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE,
+    MAIN_DAY_UPDATE,
     MAIN_UNKNOWN
 } MainAction;
 
@@ -42,6 +44,10 @@ typedef struct {
             bool occupied;
             uint8_t room_id; 
         } occupancy_update;
+        struct {
+            uint8_t room_id; 
+            float voltage;
+        } day_update;
         struct { 
             uint8_t room_id;
             bool enabled;
