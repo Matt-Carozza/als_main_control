@@ -59,6 +59,7 @@ typedef struct {
 
 typedef enum {
     LIGHT_SET_RGB,
+    LIGHT_UPDATE_STATE,
     LIGHT_UNKNOWN 
 } LightAction;
 
@@ -67,6 +68,13 @@ typedef struct {
         struct { 
             uint8_t room_id, r, g, b; 
         } set_rgb;
+        struct {
+            uint8_t room_id;
+            bool has_enabled;
+            bool enabled;
+            bool has_brightness;
+            float room_brightness;
+        } state_update;
     };
 } LightPayload;
 
