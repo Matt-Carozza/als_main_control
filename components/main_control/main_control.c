@@ -6,6 +6,10 @@
 
 static const char* TAG = "MAIN";
 
+#define DAYLIGHT_MIN_VOLTAGE 0.15f
+#define DAYLIGHT_MAX_VOLTAGE 2.0f
+#define FLOOR_BRIGHTNESS 0.20f
+
 void main_control_handle(const QueueMessage *msg) {
     switch (msg->main.action)
     {
@@ -53,11 +57,14 @@ void main_control_handle(const QueueMessage *msg) {
         case MAIN_DAY_UPDATE:
             ESP_LOGI(TAG, "MAIN_DAY_UPDATE voltage: %f", 
                 msg->main.payload.day_update.voltage);
-            uint8_t max = 5;
-            float floor_brightness = 0.2;
-            float inverse_daylight_ratio = 1 - (msg->main.payload.day_update.voltage / max);
-            float brightness = (1 - floor_brightness) * inverse_daylight_ratio + floor_brightness; 
-            ESP_LOGI(TAG, "Changing light brightness in room %u by %f%", 
+
+            float normalized_daylight_ratio = ((msg->main.payload.day_update.voltage - 0.15) / DAYLIGHT_MAX_VOLTAGE);
+            if (normalized_daylight_ratio < 0) normalized_daylight_ratio = 0;
+            if (normalized_daylight_ratio > 1) normalized_daylight_ratio = 1;
+
+            float inverse_daylight_ratio = 1 - normalized_daylight_ratio;
+            float brightness = (1 - FLOOR_BRIGHTNESS) * inverse_daylight_ratio + FLOOR_BRIGHTNESS; 
+            ESP_LOGI(TAG, "Changing light brightness in room %u by %f", 
                 msg->main.payload.day_update.room_id, brightness);
         default:
             break;
