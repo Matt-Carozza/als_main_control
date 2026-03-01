@@ -73,7 +73,7 @@ bool parse_broker_message(const char* json, QueueMessage *out) {
             /* code */
             break;
         case DEVICE_UNKNOWN:
-            ESP_LOGI(TAG, "Unknown Device Type: %s", device_from_message);
+            ESP_LOGE(TAG, "Unknown Device Type: %s", device_from_message);
             break;
         default:
             break;
@@ -111,7 +111,7 @@ static bool parse_main_message(cJSON *root, QueueMessage *out) {
         case MAIN_DAY_UPDATE:
             return parse_main_day_update(root, out);
         default:
-            ESP_LOGI(TAG, "Unknown main action: %s", action);
+            ESP_LOGE(TAG, "Unknown main action: %s", action);
             return false;
     }
     return true;
@@ -154,7 +154,7 @@ static bool parse_light_message(cJSON *root, QueueMessage *out) {
             return parse_light_set_rgb(root, out); 
             break;
         default:
-            ESP_LOGI(TAG, "Unknown light action: %s", action);
+            ESP_LOGE(TAG, "Unknown light action: %s", action);
             return false;
             break;
     }
