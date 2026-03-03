@@ -7,8 +7,8 @@
 
 static const char* TAG = "MAIN";
 
-#define DAYLIGHT_MIN_VOLTAGE 0.15f
-#define DAYLIGHT_MAX_VOLTAGE 2.0f
+#define DAYLIGHT_MIN_VOLTAGE ((uint32_t) 150)
+#define DAYLIGHT_MAX_VOLTAGE ((uint32_t) 2000U)
 #define FLOOR_BRIGHTNESS 0.20f
 
 void main_control_handle(const QueueMessage *msg) {
@@ -33,7 +33,7 @@ void main_control_handle(const QueueMessage *msg) {
                 ESP_LOGD(TAG, "Room occupied again, turning on lights");
             } else {
                 light_msg.light.payload.state_update.enabled = false;
-                ESP_LOG(TAG, "Room is unoccupied, turning off lights");
+                ESP_LOGD(TAG, "Room is unoccupied, turning off lights");
             }
             
             if (message_router_push_local(&light_msg) != pdPASS) { 
@@ -57,7 +57,7 @@ void main_control_handle(const QueueMessage *msg) {
             ESP_LOGD(TAG, "MAIN_DAY_UPDATE voltage: %f", 
                 msg->main.payload.day_update.voltage);
 
-            float normalized = ((msg->main.payload.day_update.voltage - DAYLIGHT_MIN_VOLTAGE) /
+            float normalized = (((float)msg->main.payload.day_update.voltage - DAYLIGHT_MIN_VOLTAGE) /
                                                 (DAYLIGHT_MAX_VOLTAGE - DAYLIGHT_MIN_VOLTAGE));
 
             if (normalized < 0.0f) normalized = 0.0f;
@@ -66,7 +66,7 @@ void main_control_handle(const QueueMessage *msg) {
             float inverse_daylight_ratio = 1.0f - normalized;
             float brightness = (1.0f - FLOOR_BRIGHTNESS) * inverse_daylight_ratio +
                                 FLOOR_BRIGHTNESS; 
-            ESP_LOGd(TAG, "Changing light brightness in room %u by %.1f%%", 
+            ESP_LOGD(TAG, "Changing light brightness in room %u by %.1f%%", 
                 msg->main.payload.day_update.room_id, brightness * 100.0f);
             
             QueueMessage light_msg = {

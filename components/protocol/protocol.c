@@ -35,6 +35,7 @@ static bool get_string_ref(cJSON *obj, const char *key, const char** out);
  * Getters (copies)
 */
 static bool get_u8(cJSON *obj, const char* key, uint8_t *out);
+static bool get_u32(cJSON *obj, const char* key, uint32_t *out);
 static bool get_bool(cJSON *obj, const char* key, bool *out);
 static bool get_time_hhmm(cJSON *obj, const char* key, char out[6]);
 static bool get_float(cJSON *obj, const char* key, float *out);
@@ -138,8 +139,7 @@ static bool parse_main_day_update(cJSON *root, QueueMessage *out) {
     if (!cJSON_IsObject(payload)) return false; 
     
     return get_u8(payload, "room_id", &out->main.payload.day_update.room_id) &&
-           get_float(payload, "voltage", &out->main.payload.day_update.voltage); 
-
+           get_u32(payload, "voltage", &out->main.payload.day_update.voltage); 
 }
 
 static bool parse_light_message(cJSON *root, QueueMessage *out) {
@@ -422,10 +422,21 @@ static bool get_u8(cJSON *obj, const char* key, uint8_t *out) {
    if (!cJSON_IsNumber(item)) return false;
 
    int v = item->valuedouble; // Maybe swap back to double?
-   if (v < 0 || v > 255) return false;
+   if (v < 0 || v > UINT8_MAX) return false;
    
    *out = (uint8_t)v;
    return true;
+}
+
+static bool get_u32(cJSON *obj, const char* key, uint32_t *out) {
+    cJSON *item = cJSON_GetObjectItem(obj, key);
+    if (!cJSON_IsNumber(item)) return false;
+    
+    int v = item->valueint; // Maybe swap back to double?
+    if (v < 0 || v > UINT32_MAX) return false;
+    
+    *out = (uint32_t)v;
+    return true;
 }
 
 static bool get_bool(cJSON *obj, const char* key, bool *out) {

@@ -46,7 +46,7 @@ typedef struct {
         } occupancy_update;
         struct {
             uint8_t room_id; 
-            float voltage;
+            uint32_t voltage;
         } day_update;
         struct { 
             uint8_t room_id;
