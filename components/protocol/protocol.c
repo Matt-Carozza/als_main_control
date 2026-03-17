@@ -508,7 +508,7 @@ static bool get_u8(cJSON *obj, const char* key, uint8_t *out) {
    cJSON *item = cJSON_GetObjectItem(obj, key); 
    if (!cJSON_IsNumber(item)) return false;
 
-   int v = item->valuedouble; // Maybe swap back to double?
+   int v = item->valueint;
    if (v < 0 || v > UINT8_MAX) return false;
    
    *out = (uint8_t)v;
@@ -530,7 +530,7 @@ static bool get_u32(cJSON *obj, const char* key, uint32_t *out) {
     cJSON *item = cJSON_GetObjectItem(obj, key);
     if (!cJSON_IsNumber(item)) return false;
     
-    int v = item->valueint; // Maybe swap back to double?
+    int v = item->valueint;
     if (v < 0 || v > UINT32_MAX) return false;
     
     *out = (uint32_t)v;
