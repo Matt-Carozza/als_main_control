@@ -20,11 +20,16 @@ static bool parse_light_message(cJSON *root, QueueMessage *out);
 static bool parse_light_set_rgb(cJSON *root, QueueMessage *out);
 static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out);
 
+// Occ
+static bool parse_occ_message(cJSON *root, QueueMessage *out);
+static bool parse_occ_config_delay(cJSON *root, QueueMessage *out);
+
 /*
  * Serializers
 */
 static bool serialize_app(cJSON* root, const QueueMessage *msg);
 static bool serialize_light(cJSON* root, const QueueMessage *msg);
+static bool serialize_occ(cJSON* root, const QueueMessage *msg);
 
 /*
  * Getters (refs)
@@ -35,6 +40,7 @@ static bool get_string_ref(cJSON *obj, const char *key, const char** out);
  * Getters (copies)
 */
 static bool get_u8(cJSON *obj, const char* key, uint8_t *out);
+static bool get_u16(cJSON *obj, const char* key, uint16_t *out);
 static bool get_u32(cJSON *obj, const char* key, uint32_t *out);
 static bool get_bool(cJSON *obj, const char* key, bool *out);
 static bool get_time_hhmm(cJSON *obj, const char* key, char out[6]);
@@ -71,7 +77,7 @@ bool parse_broker_message(const char* json, QueueMessage *out) {
             /* code */
             break;
         case DEVICE_OCC_SENSOR:
-            /* code */
+            ok = parse_occ_message(root, out);
             break;
         case DEVICE_UNKNOWN:
             ESP_LOGE(TAG, "Unknown Device Type: %s", device_from_message);
@@ -194,6 +200,34 @@ static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *
                          out->main.payload.toggle_adaptive_lighting_mode.sleep_time);
 }
 
+static bool parse_occ_message(cJSON *root, QueueMessage *out) { 
+    const char *action;
+    if(!get_string_ref(root, "action", &action)) return false;
+    
+    out->occ.action = occ_action_from_string(action);
+    
+    switch (out->occ.action)
+    {
+        case OCC_CONFIG_DELAY:
+            return parse_occ_config_delay(root, out); 
+            break;
+        default:
+            ESP_LOGE(TAG, "Unknown light action: %s", action);
+            return false;
+            break;
+    }
+}
+
+static bool parse_occ_config_delay(cJSON *root, QueueMessage *out) {
+    cJSON* payload = cJSON_GetObjectItem(root, "payload");
+    if (!cJSON_IsObject(payload)) return false;
+    
+    return get_u8(payload, "room_id", 
+                  &out->occ.payload.config_delay.room_id) &&
+           get_u16(payload, "off_delay", 
+                  &out->occ.payload.config_delay.off_delay);
+}
+
 bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
     if (!msg || !out || out_len == 0) return false;
 
@@ -221,6 +255,7 @@ bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
             ok = serialize_light(root, msg);
             break;
         case DEVICE_OCC_SENSOR:
+            ok = serialize_occ(root, msg);
             break;
         case DEVICE_UNKNOWN:
             cJSON_Delete(root);
@@ -325,6 +360,43 @@ static bool serialize_light(cJSON* root, const QueueMessage *msg) {
     return true;
 }
 
+static bool serialize_occ(cJSON* root, const QueueMessage *msg) {
+    if (!root || !msg) return false;
+    
+    const char *action_str = occ_action_to_string(msg->occ.action);
+    
+    if (!action_str) return false;
+    
+    if (!cJSON_AddStringToObject(root, "action", action_str))
+        return false;
+    
+    cJSON *payload = cJSON_CreateObject();
+    if (!payload) return false;
+    
+    bool ok = false;
+
+    switch (msg->occ.action) 
+    {
+        case OCC_CONFIG_DELAY:
+            ok = 
+                cJSON_AddNumberToObject(payload, "room_id", msg->occ.payload.config_delay.room_id) &&
+                cJSON_AddNumberToObject(payload, "off_delay", msg->occ.payload.config_delay.off_delay);
+            break;
+        default:
+            cJSON_Delete(payload);
+            return false;
+    }
+    
+    if (!ok) {
+       cJSON_Delete(payload); 
+       return false;
+    }
+    
+    cJSON_AddItemToObject(root, "payload", payload);
+
+    return true;
+}
+
 MessageOrigin origin_from_string(const char *s) {
     if (!strcmp(s, "MAIN")) return ORIGIN_MAIN;
     if (!strcmp(s, "APP")) return ORIGIN_APP;
@@ -352,6 +424,11 @@ LightAction light_action_from_string(const char *s) {
     if (!strcmp(s, "SET_RGB")) return LIGHT_SET_RGB;
     if (!strcmp(s, "TOGGLE_ADAPTIVE_LIGHTING_MODE")) return MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE;
     return LIGHT_UNKNOWN;
+}
+
+OccAction occ_action_from_string(const char *s) {
+    if (!strcmp(s, "OCC_CONFIG_DELAY")) return OCC_CONFIG_DELAY;
+    return OCC_UNKNOWN;
 }
 
 const char* origin_to_string(MessageOrigin origin) {
@@ -410,6 +487,16 @@ const char* light_action_to_string(LightAction light_action) {
     }
 }
 
+const char* occ_action_to_string(OccAction occ_action) {
+    switch (occ_action)
+    {
+        case OCC_CONFIG_DELAY:
+            return "OCC_CONFIG_DELAY";
+        default:
+            return NULL;
+    }
+}
+
 static bool get_string_ref(cJSON *obj, const char *key, const char** out) {
     cJSON *item = cJSON_GetObjectItem(obj, key);
     if (!cJSON_IsString(item)) return false;
@@ -426,6 +513,17 @@ static bool get_u8(cJSON *obj, const char* key, uint8_t *out) {
    
    *out = (uint8_t)v;
    return true;
+}
+
+static bool get_u16(cJSON *obj, const char* key, uint16_t *out) {
+    cJSON *item = cJSON_GetObjectItem(obj, key);
+    if (!cJSON_IsNumber(item)) return false;
+
+    int v = item->valueint;
+    if (v < 0 || v > UINT16_MAX) return false;
+    
+    *out = (uint16_t)v;
+    return true;
 }
 
 static bool get_u32(cJSON *obj, const char* key, uint32_t *out) {

@@ -29,7 +29,6 @@ typedef enum {
 } AppAction;
 
 typedef enum {
-    // OCC
     MAIN_HEARTBEAT_UPDATE,
     MAIN_OCCUPANCY_UPDATE,
     MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE,
@@ -80,6 +79,21 @@ typedef struct {
     };
 } LightPayload;
 
+typedef enum {
+    OCC_CONFIG_DELAY,
+    OCC_UNKNOWN
+} OccAction;
+
+typedef struct {
+    union {
+        struct {
+            uint8_t room_id;
+            uint16_t off_delay;
+        } config_delay;
+    };
+} OccPayload;
+
+
 typedef struct {
     bool connected_to_broker;
 } AppPayload;
@@ -94,13 +108,17 @@ typedef struct {
             MainPayload payload;
         } main;
        struct {
-           AppAction action;
-           AppPayload payload;
+            AppAction action;
+            AppPayload payload;
        } app;
        struct {
-           LightAction action;
-           LightPayload payload;
+            LightAction action;
+            LightPayload payload;
        } light;
+       struct {
+            OccAction action;
+            OccPayload payload;
+       } occ;
     };
 } QueueMessage;
 
@@ -116,6 +134,7 @@ MessageOrigin origin_from_string(const char *s);
 DeviceType device_from_string(const char *s);
 MainAction main_action_from_string(const char *s);
 LightAction light_action_from_string(const char *s);
+OccAction occ_action_from_string(const char *s);
 
 /*
     Turns enumerations found within QueueMessage struct into corresponding strings
@@ -125,3 +144,4 @@ const char* origin_to_string(MessageOrigin origin);
 const char* device_to_string(DeviceType device);
 const char* app_action_to_string(AppAction app_action);
 const char* light_action_to_string(LightAction app_action);
+const char* occ_action_to_string(OccAction occ_action);

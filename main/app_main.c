@@ -11,6 +11,7 @@
 #include "main_control.h"
 #include "mobile_app.h"
 #include "light.h"
+#include "occ_sensor.h"
 
 
 // #include "string_type.h" PROB REMOVE
@@ -37,6 +38,7 @@ void queue_task(void *pvParameters) {
                     light_handle(&msg);
                     break;
                 case DEVICE_OCC_SENSOR:
+                    occ_handle(&msg);
                     break;
                 case DEVICE_UNKNOWN:
                     ESP_LOGE(TAG, "ERROR During Queue: Device Uknown");
