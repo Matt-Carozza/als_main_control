@@ -6,6 +6,8 @@
 #include "esp_log.h"
 #include "cJSON.h"
 
+#define MAX_ROOMS 256U
+
 typedef enum {
     ORIGIN_MAIN,
     ORIGIN_APP,

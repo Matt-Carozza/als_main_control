@@ -13,10 +13,11 @@ static void log_room_state(uint8_t room_id, RGB output_color);
 
 static const char* TAG = "LIGHT";
 
-static RGB room_base_color[256];
-static float room_brightness[256];
-static bool room_enabled[256];
-static bool room_initialized[256];
+
+static RGB room_base_color[MAX_ROOMS];
+static float room_brightness[MAX_ROOMS];
+static bool room_enabled[MAX_ROOMS];
+static bool room_initialized[MAX_ROOMS];
 
 void light_handle(const QueueMessage *msg) {
     switch (msg->light.action)
