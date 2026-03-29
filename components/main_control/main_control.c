@@ -4,12 +4,13 @@
 #include "message_router.h"
 #include "freertos/FreeRTOS.h"
 #include "light.h"
-
-static const char* TAG = "MAIN";
+#include "adaptive_lighting_mode.h"
 
 #define DAYLIGHT_MIN_VOLTAGE ((uint32_t) 150)
 #define DAYLIGHT_MAX_VOLTAGE ((uint32_t) 2000U)
 #define FLOOR_BRIGHTNESS 0.20f
+
+static const char* TAG = "MAIN";
 
 void main_control_handle(const QueueMessage *msg) {
     switch (msg->main.action)
@@ -43,13 +44,21 @@ void main_control_handle(const QueueMessage *msg) {
         }
 
         case MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE: {
-            ESP_LOGI(TAG, "MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE: %u", 
-                msg->main.payload.toggle_adaptive_lighting_mode.room_id);
-            if (msg->main.payload.toggle_adaptive_lighting_mode.enabled) {
+            const bool enabled = msg->main.payload.toggle_adaptive_lighting_mode.enabled;
+            const uint8_t room_id = msg->main.payload.toggle_adaptive_lighting_mode.room_id;
+            const char* wake_time = msg->main.payload.toggle_adaptive_lighting_mode.wake_time;
+            const char* sleep_time = msg->main.payload.toggle_adaptive_lighting_mode.sleep_time;
+            const char* current_time = msg->main.payload.toggle_adaptive_lighting_mode.current_time;
+
+            ESP_LOGI(TAG, "MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE");
+            if (enabled) {
                 ESP_LOGI(TAG, "Wake Time: %s", 
-                    msg->main.payload.toggle_adaptive_lighting_mode.wake_time);
+                    wake_time);
                 ESP_LOGI(TAG, "Sleep Time: %s",
-                    msg->main.payload.toggle_adaptive_lighting_mode.sleep_time);
+                    sleep_time);
+                adaptive_lighting_mode_enable(room_id, wake_time, sleep_time, current_time);
+            } else {
+                adaptive_lighting_mode_disable(room_id);
             }
             break;
         }

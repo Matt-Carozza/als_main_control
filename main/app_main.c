@@ -85,7 +85,7 @@ void app_main(void)
     message_router_init();
 
     xTaskCreate(queue_task, "queue_task", 4096, NULL, 5, NULL);
-    xTaskCreate(status_task, "status_task", 4096, NULL, 4, NULL);
+    xTaskCreate(status_task, "status_task", 4096, NULL, 3, NULL);
     
     mqtt_transport_start();
 }

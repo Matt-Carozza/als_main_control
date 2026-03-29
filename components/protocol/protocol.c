@@ -14,11 +14,11 @@ static bool parse_main_message(cJSON *root, QueueMessage *out);
 static bool parse_main_heartbeat_update(cJSON *root, QueueMessage *out);
 static bool parse_main_occupancy_update(cJSON *root, QueueMessage *out);
 static bool parse_main_day_update(cJSON *root, QueueMessage *out);
+static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out);
 
 // Light
 static bool parse_light_message(cJSON *root, QueueMessage *out);
 static bool parse_light_set_rgb(cJSON *root, QueueMessage *out);
-static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out);
 
 // Occ
 static bool parse_occ_message(cJSON *root, QueueMessage *out);
@@ -148,6 +148,33 @@ static bool parse_main_day_update(cJSON *root, QueueMessage *out) {
            get_u32(payload, "voltage", &out->main.payload.day_update.voltage); 
 }
 
+static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out) {
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if(!cJSON_IsObject(payload)) return false;
+    
+    if(!get_bool(payload, 
+                 "enabled", 
+                 &out->main.payload.toggle_adaptive_lighting_mode.enabled) ||
+       !get_u8(payload,
+                 "room_id",
+                 &out->main.payload.toggle_adaptive_lighting_mode.room_id))
+        return false;
+    
+    if (!out->main.payload.toggle_adaptive_lighting_mode.enabled) {
+        return true;
+    }
+
+    return get_time_hhmm(payload,
+                         "wake_time",
+                         out->main.payload.toggle_adaptive_lighting_mode.wake_time)
+        && get_time_hhmm(payload, 
+                         "sleep_time",   
+                         out->main.payload.toggle_adaptive_lighting_mode.sleep_time)
+        && get_time_hhmm(payload, 
+                         "current_time",   
+                         out->main.payload.toggle_adaptive_lighting_mode.current_time);
+}
+
 static bool parse_light_message(cJSON *root, QueueMessage *out) {
     const char *action;
     if(!get_string_ref(root, "action", &action)) return false;
@@ -174,30 +201,6 @@ static bool parse_light_set_rgb(cJSON *root, QueueMessage *out) {
         && get_u8(payload, "r", &out->light.payload.set_rgb.r)
         && get_u8(payload, "g", &out->light.payload.set_rgb.g)
         && get_u8(payload, "b", &out->light.payload.set_rgb.b);
-}
-
-static bool parse_main_toggle_adaptive_lighting_mode(cJSON *root, QueueMessage *out) {
-    cJSON *payload = cJSON_GetObjectItem(root, "payload");
-    if(!cJSON_IsObject(payload)) return false;
-    
-    if(!get_bool(payload, 
-                 "enabled", 
-                 &out->main.payload.toggle_adaptive_lighting_mode.enabled) ||
-       !get_u8(payload,
-                 "room_id",
-                 &out->main.payload.toggle_adaptive_lighting_mode.room_id))
-        return false;
-    
-    if (!out->main.payload.toggle_adaptive_lighting_mode.enabled) {
-        return true;
-    }
-
-    return get_time_hhmm(payload,
-                         "wake_time",
-                         out->main.payload.toggle_adaptive_lighting_mode.wake_time)
-        && get_time_hhmm(payload, 
-                         "sleep_time",   
-                         out->main.payload.toggle_adaptive_lighting_mode.sleep_time);
 }
 
 static bool parse_occ_message(cJSON *root, QueueMessage *out) { 
@@ -417,12 +420,12 @@ MainAction main_action_from_string(const char *s) {
     if (!strcmp(s, "HEARTBEAT_UPDATE")) return MAIN_HEARTBEAT_UPDATE;
     if (!strcmp(s, "OCC_UPDATE")) return MAIN_OCCUPANCY_UPDATE;
     if (!strcmp(s, "DAY_UPDATE")) return MAIN_DAY_UPDATE;
+    if (!strcmp(s, "TOGGLE_ADAPTIVE_LIGHTING_MODE")) return MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE;
     return MAIN_UNKNOWN;
 }
 
 LightAction light_action_from_string(const char *s) {
     if (!strcmp(s, "SET_RGB")) return LIGHT_SET_RGB;
-    if (!strcmp(s, "TOGGLE_ADAPTIVE_LIGHTING_MODE")) return MAIN_TOGGLE_ADAPTIVE_LIGHTING_MODE;
     return LIGHT_UNKNOWN;
 }
 
