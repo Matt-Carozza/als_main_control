@@ -14,8 +14,6 @@
 #include "occ_sensor.h"
 
 
-// #include "string_type.h" PROB REMOVE
-
 void queue_task(void *pvParameters);
 void status_task(void *pvParameters);
 
@@ -49,22 +47,22 @@ void queue_task(void *pvParameters) {
 }
 
 void status_task(void *pvParameters) {
+    QueueMessage msg = { 
+        .origin = ORIGIN_MAIN,
+        .device = DEVICE_APP,
+        .app = {
+            .action = APP_STATUS
+        }
+    };
+
     while (1) {
-        QueueMessage msg = { // Should this be scoped outside of the loop
-            .origin = ORIGIN_MAIN,
-            .device = DEVICE_APP,
-            .app = {
-                .action = APP_STATUS,
-                .payload = {
-                    .connected_to_broker = mqtt_transport_is_connected(),
-                }
-            }
-        };
+        msg.app.payload.connected_to_broker = mqtt_transport_is_connected();
 
         if (message_router_push_local(&msg) != pdPASS) { 
             ESP_LOGE("STATUS_TASK", "Failed to send message to queue");
         } 
-        vTaskDelay(60000 / portTICK_PERIOD_MS);
+
+        vTaskDelay(pdMS_TO_TICKS(60000));
     }
 }
 
