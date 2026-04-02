@@ -11,9 +11,10 @@
 
 // ===== State =====
 typedef struct {    
-    bool is_enabled;
+    RGB color_before_enable;
     uint16_t wake_minutes;
     uint16_t awake_period;
+    bool is_enabled;
 } AlmRoom;
 
 typedef struct {
@@ -29,6 +30,7 @@ static TaskHandle_t adaptive_lighting_mode_handler;
 static AlmState s_state = {0};
 
 // ===== State Transisions =====
+static void alm_room_color_before_enable_set_unsafe(AlmState* state, uint8_t room_id, RGB rgb);
 static void alm_room_enable_unsafe(AlmState* state, uint8_t room_id);
 static void alm_room_disable_unsafe(AlmState* state, uint8_t room_id);
 static void alm_room_wake_minutes_set_unsafe(AlmState* state, uint8_t room_id, uint16_t wake_minutes);
@@ -38,6 +40,7 @@ static void alm_system_time_increment_unsafe(AlmState* state);
 static void alm_task_set_running_unsafe(AlmState* state);
 static void alm_task_set_idle_unsafe(AlmState* state);
 // ------ Mutex Safety ------ 
+static void alm_room_color_before_enable_set(AlmState* state, uint8_t room_id, RGB rgb);
 static void alm_room_enable(AlmState* state, uint8_t room_id);
 static void alm_room_disable(AlmState* state, uint8_t room_id);
 static void alm_room_wake_minutes_set(AlmState* state, uint8_t room_id, uint16_t wake_minutes);
@@ -50,11 +53,20 @@ static void alm_task_set_idle(AlmState* state);
 // ===== State Getters =====
 // !!!!! Mutex Unsafe !!!!!
 static AlmState alm_get_snapshot_unsafe();
+static AlmRoom alm_room_get_unsafe(uint8_t room_id);
+static RGB alm_room_color_before_enable_get_unsafe(uint8_t room_id);
+static bool alm_room_is_enabled_unsafe(uint8_t room_id);
+static uint16_t alm_system_time_get_unsafe();
+static bool alm_task_is_running_unsafe();
 // !!!!!!!!!!!!!!!!!!!!!!!!
 
 // ------ Mutex Safety ------ 
 static AlmState alm_get_snapshot();
+static AlmRoom alm_room_get(uint8_t room_id);
+static RGB alm_room_color_before_enable_get(uint8_t room_id);
 static bool alm_room_is_enabled(uint8_t room_id);
+static uint16_t alm_system_time_get();
+static bool alm_task_is_running();
 static uint8_t alm_room_count_get();
 
 // ===== Pure functions =====
@@ -73,9 +85,10 @@ static void alm_wake_and_sleep_init(const uint8_t room_id,
     const char sleep_time[6],
     const char current_time[6]);
 
-// ===== MQTT =====
-static void publish_color_temperature(uint8_t room_id, uint16_t color_temperature);
-static void publish_lights_off(uint8_t room_id);
+// ===== Light =====
+static void update_light_by_color_temperature(uint8_t room_id, uint16_t color_temperature);
+static void update_light_by_rgb(uint8_t room_id, RGB rgb);
+static void update_lights_power_off(uint8_t room_id);
 
 
 void adaptive_lighting_mode_enable(const uint8_t room_id, 
@@ -92,6 +105,8 @@ void adaptive_lighting_mode_enable(const uint8_t room_id,
     alm_wake_and_sleep_init(room_id, wake_time, sleep_time, current_time);
 
     if (alm_room_is_enabled(room_id)) return;
+
+    alm_room_color_before_enable_set(&s_state, room_id, light_base_color_get(room_id));
 
     if (adaptive_lighting_mode_handler == NULL) {
         ESP_LOGI(TAG, "Creating Handler...");
@@ -116,6 +131,9 @@ void adaptive_lighting_mode_disable(const uint8_t room_id) {
         ESP_LOGI(TAG, "Disabling ALM Task...");
         alm_task_set_idle(&s_state);
     }
+
+    update_light_by_rgb(room_id, 
+                        alm_room_color_before_enable_get(room_id));
 }
 
 static void adaptive_lighting_mode(void *pvParameters) {
@@ -131,9 +149,8 @@ static void adaptive_lighting_mode(void *pvParameters) {
     while (1) {
         alm_system_time_increment(&s_state);
 
-        const AlmState current_state = alm_get_snapshot();
-        const uint16_t current_time = current_state.system_time;
-        const bool task_running = current_state.task_running;
+        const uint16_t current_time = alm_system_time_get();
+        const bool task_running = alm_task_is_running();
 
         if (!task_running) {
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -141,7 +158,7 @@ static void adaptive_lighting_mode(void *pvParameters) {
         }
 
         for (size_t room_id = 0; room_id < MAX_ROOMS; room_id++) {
-            const AlmRoom room = current_state.room_state[room_id];
+            const AlmRoom room = alm_room_get(room_id);
             if (!room.is_enabled) continue;
 
             float current_pos = alm_room_compute_position(&room, current_time);
@@ -150,7 +167,7 @@ static void adaptive_lighting_mode(void *pvParameters) {
             if (current_pos < 0 || current_pos > 1) {
                 ESP_LOGI(TAG, "[%u] Outside of awake time, lights are off", current_time);
                 if (room_light_status[room_id]) {
-                    publish_lights_off(room_id);
+                    update_lights_power_off(room_id);
                     room_light_status[room_id] = false;
                 }
             } else {
@@ -163,7 +180,7 @@ static void adaptive_lighting_mode(void *pvParameters) {
 
                 if (rounded_color_temp != room_last_color_temp_sent[room_id] || 
                     !room_light_status[room_id]) {
-                    publish_color_temperature(room_id, rounded_color_temp);
+                    update_light_by_color_temperature(room_id, rounded_color_temp);
                     room_light_status[room_id] = true;
                     room_last_color_temp_sent[room_id] = rounded_color_temp;
                 }
@@ -173,14 +190,13 @@ static void adaptive_lighting_mode(void *pvParameters) {
     }
 }
 
-static void publish_color_temperature(uint8_t room_id, uint16_t color_temperature) {
+static void update_light_by_color_temperature(uint8_t room_id, uint16_t color_temperature) {
     RGBResult res = color_temp_to_rgb(color_temperature);
     if (!res.success) {
         ESP_LOGE(TAG, "Invalid Color Temperature");
         return;
     }
 
-    ESP_LOGI(TAG, "Publishing Color Temperature: %uK", color_temperature);
     QueueMessage light_msg = {
         .origin = ORIGIN_MAIN,
         .device = DEVICE_LIGHT,
@@ -197,7 +213,26 @@ static void publish_color_temperature(uint8_t room_id, uint16_t color_temperatur
         ESP_LOGE(TAG, "Failed to send message to queue");
     }
 }
-static void publish_lights_off(uint8_t room_id) {
+
+static void update_light_by_rgb(uint8_t room_id, RGB rgb) {
+    QueueMessage light_msg = {
+        .origin = ORIGIN_MAIN,
+        .device = DEVICE_LIGHT,
+        .light.action = LIGHT_SET_RGB,
+        .light.payload.set_rgb = {
+            .room_id = room_id,
+            .r = rgb.r,
+            .g = rgb.g,
+            .b = rgb.b
+        }
+    };
+
+    if (message_router_push_local(&light_msg) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to send message to queue");
+    }
+}
+
+static void update_lights_power_off(uint8_t room_id) {
     ESP_LOGI(TAG, "Publishing Lights Off");
 
     QueueMessage light_msg = {
@@ -260,6 +295,10 @@ static void alm_wake_and_sleep_init(const uint8_t room_id,
 
 // ===== State Transisions =====
 // !!!!! Mutex Unsafe !!!!!
+static void alm_room_color_before_enable_set_unsafe(AlmState* state, uint8_t room_id, RGB rgb) {
+    state->room_state[room_id].color_before_enable = rgb;    
+}
+
 static void alm_room_enable_unsafe(AlmState* state, uint8_t room_id) {
     state->room_state[room_id].is_enabled = true;    
 }
@@ -295,6 +334,12 @@ static void alm_task_set_idle_unsafe(AlmState* state) {
 // !!!!!!!!!!!!!!!!!!!!!!!!
 
 // ------ Mutex Safety ------ 
+static void alm_room_color_before_enable_set(AlmState* state, uint8_t room_id, RGB rgb) {
+    xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
+    alm_room_color_before_enable_set_unsafe(state, room_id, rgb);
+    xSemaphoreGive(alm_state_mutex);
+}
+
 static void alm_room_enable(AlmState* state, uint8_t room_id) {
     xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
     alm_room_enable_unsafe(state, room_id);
@@ -348,6 +393,30 @@ static void alm_task_set_idle(AlmState* state) {
 static AlmState alm_get_snapshot_unsafe() {
     return s_state;
 }
+
+static AlmRoom alm_room_get_unsafe(uint8_t room_id) {
+    return s_state.room_state[room_id];
+}
+
+static RGB alm_room_color_before_enable_get_unsafe(uint8_t room_id) {
+    return s_state.room_state[room_id].color_before_enable;
+}
+
+static bool alm_room_is_enabled_unsafe(uint8_t room_id) {
+    return s_state.room_state[room_id].is_enabled;
+}
+
+static uint16_t alm_system_time_get_unsafe() {
+    return s_state.system_time;
+}
+
+
+static bool alm_task_is_running_unsafe() {
+    return s_state.task_running;
+}
+
+
+
 // !!!!!!!!!!!!!!!!!!!!!!!!
 
 // ------ Mutex Safe ------ 
@@ -358,9 +427,39 @@ static AlmState alm_get_snapshot() {
     return snapshot;
 }
 
+static AlmRoom alm_room_get(uint8_t room_id) {
+    xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
+    AlmRoom room =  alm_room_get_unsafe(room_id);
+    xSemaphoreGive(alm_state_mutex);
+    return room;
+}
+
+static RGB alm_room_color_before_enable_get(uint8_t room_id) {
+    xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
+    RGB color =  alm_room_color_before_enable_get_unsafe(room_id);
+    xSemaphoreGive(alm_state_mutex);
+    return color;
+}
+
 static bool alm_room_is_enabled(uint8_t room_id) {
-    AlmState snapshot = alm_get_snapshot(); 
-    return snapshot.room_state[room_id].is_enabled;
+    xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
+    bool enabled =  alm_room_is_enabled_unsafe(room_id);
+    xSemaphoreGive(alm_state_mutex);
+    return enabled;
+}
+
+static uint16_t alm_system_time_get() {
+    xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
+    uint16_t time =  alm_system_time_get_unsafe();
+    xSemaphoreGive(alm_state_mutex);
+    return time;
+}
+
+static bool alm_task_is_running() {
+    xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
+    bool enabled =  alm_task_is_running_unsafe();
+    xSemaphoreGive(alm_state_mutex);
+    return enabled;
 }
 
 static uint8_t alm_room_count_get() {

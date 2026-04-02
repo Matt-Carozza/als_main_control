@@ -13,7 +13,6 @@ static void log_room_state(uint8_t room_id, RGB output_color);
 
 static const char* TAG = "LIGHT";
 
-
 static RGB room_base_color[MAX_ROOMS];
 static float room_brightness[MAX_ROOMS];
 static bool room_enabled[MAX_ROOMS];
@@ -59,6 +58,11 @@ void light_handle(const QueueMessage *msg) {
         default:
             break;
     }
+}
+
+RGB light_base_color_get(uint8_t room_id) {
+    init_room_if_needed(room_id);
+    return room_base_color[room_id];
 }
 
 static RGB get_room_output_color(uint8_t room_id) {

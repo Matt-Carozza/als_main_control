@@ -8,3 +8,4 @@ typedef struct {
 } RGB;
 
 void light_handle(const QueueMessage *msg);
+RGB light_base_color_get(uint8_t room_id);
