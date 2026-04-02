@@ -1,11 +1,13 @@
 // Auth Mode: Open for networks with no passwords, WPA2 PSK with passwords
-#define LOCAL_BROKER_URL "mqtt://172.20.10.14:1884"
+#define LOCAL_BROKER_URL "mqtt://192.168.8.100:1884"
 #define PUBLIC_BROKER_URL "mqtt://test.mosquitto.org:1883"
+//#define PUBLIC_BROKER_URL "mqtt://broker.hivemq.com:1883"
 
 #include <stdio.h>
 #include <inttypes.h>
 #include "transport_mqtt.h"
 #include "mqtt_client.h"
+#include "esp_wifi.h"
 
 #include "message_router.h"
 
@@ -96,8 +98,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 static void mqtt_app_start(void)
 {
+    esp_wifi_set_ps(WIFI_PS_NONE);
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = PUBLIC_BROKER_URL
+        .broker.address.uri = PUBLIC_BROKER_URL,
     };
 #if CONFIG_BROKER_URL_FROM_STDIN
     char line[128];
