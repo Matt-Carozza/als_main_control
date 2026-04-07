@@ -445,6 +445,9 @@ static bool alm_task_is_running_unsafe() {
 // !!!!!!!!!!!!!!!!!!!!!!!!
 
 // ------ Mutex Safe ------ 
+
+// WARNING: This function returns a lot of data and may have
+// the potential to cause a stack overflow
 static AlmState alm_get_snapshot() {
     xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
     AlmState snapshot =  alm_get_snapshot_unsafe();
@@ -489,9 +492,9 @@ static bool alm_task_is_running() {
 
 static uint8_t alm_room_count_get() {
     uint8_t count = 0;
-    AlmState snapshot = alm_get_snapshot(); 
     for (size_t i = 0; i < MAX_ROOMS; ++i) {
-        if (snapshot.room_state[i].is_enabled) count++;
+        AlmRoomInternal room = alm_room_get(i);
+        if (room.is_enabled) count++;
     } 
     return count;
 }
