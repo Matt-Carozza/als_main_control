@@ -12,6 +12,7 @@
 #include "mobile_app.h"
 #include "light.h"
 #include "occ_sensor.h"
+#include "adaptive_lighting_mode.h"
 
 
 void queue_task(void *pvParameters);
@@ -56,7 +57,7 @@ void status_task(void *pvParameters) {
     };
 
     while (1) {
-        msg.app.payload.connected_to_broker = mqtt_transport_is_connected();
+        msg.app.payload.status.connected_to_broker = mqtt_transport_is_connected();
 
         if (message_router_push_local(&msg) != pdPASS) { 
             ESP_LOGE("STATUS_TASK", "Failed to send message to queue");
@@ -81,6 +82,7 @@ void app_main(void)
     ESP_ERROR_CHECK(example_connect());
     
     message_router_init();
+    adaptive_lighting_mode_init();
 
     xTaskCreate(queue_task, "queue_task", 4096, NULL, 5, NULL);
     xTaskCreate(status_task, "status_task", 4096, NULL, 3, NULL);

@@ -56,6 +56,7 @@ void light_handle(const QueueMessage *msg) {
         }
 
         default:
+            ESP_LOGE(TAG, "Unknown Light Action %u", msg->light.action);
             break;
     }
 }
@@ -130,14 +131,14 @@ static void publish_rgb(MessageOrigin origin, DeviceType device, uint8_t room_id
 }
 
 static void log_room_state(uint8_t room_id, RGB output_color) {
-    ESP_LOGD(TAG, "Room %u state:", room_id);
-    ESP_LOGD(TAG, "  Base: R:%u G:%u B:%u",
+    ESP_LOGI(TAG, "Room %u state:", room_id);
+    ESP_LOGI(TAG, "  Base: R:%u G:%u B:%u",
              room_base_color[room_id].r,
              room_base_color[room_id].g,
              room_base_color[room_id].b);
-    ESP_LOGD(TAG, "  Brightness: %.3f", room_brightness[room_id]);
-    ESP_LOGD(TAG, "  Enabled: %d", room_enabled[room_id]);
-    ESP_LOGD(TAG, "  Output: R:%u G:%u B:%u",
+    ESP_LOGI(TAG, "  Brightness: %.3f", room_brightness[room_id]);
+    ESP_LOGI(TAG, "  Enabled: %d", room_enabled[room_id]);
+    ESP_LOGI(TAG, "  Output: R:%u G:%u B:%u",
              output_color.r,
              output_color.g,
              output_color.b);

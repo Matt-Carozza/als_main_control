@@ -70,7 +70,7 @@ bool parse_broker_message(const char* json, QueueMessage *out) {
             ok = parse_main_message(root, out);
             break;
         case DEVICE_APP:
-            /* code */
+            ok = parse_app_message(root, out);
             break;
         case DEVICE_LIGHT:
             ok = parse_light_message(root, out);
@@ -93,9 +93,23 @@ fail:
 
 
 static bool parse_app_message(cJSON *root, QueueMessage *out) {
-    // Code here
-    bool ok = false;
-    return ok;
+    const char *action;
+    if (!get_string_ref(root, "action", &action)) return false;
+    
+    out->app.action = app_action_from_string(action);
+    switch (out->app.action)
+    {
+        case APP_GET_MAIN_STATE:
+            // No payload to be parsed
+            return true;
+            break;
+        case APP_STATUS:
+            ESP_LOGE(TAG, "Command APP_STATUS isn't meant to be parsed");
+            return false;
+        default:
+            ESP_LOGE(TAG, "Unknown app action: %s", action);
+            return false;
+    }
 }
 
 static bool parse_main_message(cJSON *root, QueueMessage *out) {
@@ -288,11 +302,9 @@ bool serialize_message(const QueueMessage *msg, char* out, size_t out_len) {
 }
 
 static bool serialize_app(cJSON* root, const QueueMessage *msg) {
-    
     if (!root || !msg) return false;
     
     const char *action_str = app_action_to_string(msg->app.action);
-    
     if (!action_str) return false;
     
     if (!cJSON_AddStringToObject(root, "action", action_str))
@@ -307,7 +319,29 @@ static bool serialize_app(cJSON* root, const QueueMessage *msg) {
     {
         case APP_STATUS:
             ok = cJSON_AddBoolToObject(payload, "connected_to_broker",
-                                       msg->app.payload.connected_to_broker);
+                                       msg->app.payload.status.connected_to_broker);
+            break;
+        case APP_GET_MAIN_STATE:
+            cJSON *room_array = cJSON_AddArrayToObject(payload, "rooms");
+            if (!room_array) return false;
+
+            for (size_t i = 0; i < ROOMS_TO_SEND; ++i) {
+                const RoomState *rs = &msg->app.payload.get_main_state_res.room_state[i];
+                cJSON *room_obj = cJSON_CreateObject();
+                ok = cJSON_AddNumberToObject(room_obj, "room_id", rs->room_id);
+                ok = cJSON_AddNumberToObject(room_obj, "r", rs->base_color.r);
+                ok = cJSON_AddNumberToObject(room_obj, "g", rs->base_color.g);
+                ok = cJSON_AddNumberToObject(room_obj, "b", rs->base_color.b);
+                ok = cJSON_AddBoolToObject(room_obj, "alm_enabled", 
+                    rs->alm_room_state.alm_enabled);
+                if (rs->alm_room_state.alm_enabled) {
+                    ok = cJSON_AddStringToObject(room_obj, "wake_time",
+                        rs->alm_room_state.wake_time);
+                    ok = cJSON_AddStringToObject(room_obj, "sleep_time",
+                        rs->alm_room_state.sleep_time);
+                }
+                cJSON_AddItemToArray(room_array, room_obj);
+            }
             break;
         default:
             cJSON_Delete(payload);
@@ -434,6 +468,12 @@ OccAction occ_action_from_string(const char *s) {
     return OCC_UNKNOWN;
 }
 
+AppAction app_action_from_string(const char *s) {
+    if (!strcmp(s, "APP_STATUS")) return APP_STATUS;
+    if (!strcmp(s, "GET_MAIN_STATE")) return APP_GET_MAIN_STATE;
+    return APP_UNKNOWN;
+}
+
 const char* origin_to_string(MessageOrigin origin) {
     switch (origin)
     {
@@ -475,6 +515,8 @@ const char* app_action_to_string(AppAction app_action) {
     {
         case APP_STATUS:
             return "STATUS";
+        case APP_GET_MAIN_STATE:
+            return "GET_MAIN_STATE";
         default:
             return NULL;
     }

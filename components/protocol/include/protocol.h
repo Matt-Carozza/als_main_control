@@ -7,6 +7,7 @@
 #include "cJSON.h"
 
 #define MAX_ROOMS 256U
+#define ROOMS_TO_SEND 2U // 2 Is needed for Demo Day
 
 typedef enum {
     ORIGIN_MAIN,
@@ -26,6 +27,8 @@ typedef enum {
 
 typedef enum {
     APP_STATUS,
+    APP_GET_MAIN_STATE,
+    APP_UNKNOWN
 } AppAction;
 
 typedef enum {
@@ -94,9 +97,34 @@ typedef struct {
     };
 } OccPayload;
 
+typedef struct {
+    uint8_t r, g, b;
+} RGB;
+typedef struct {
+    char wake_time[6];
+    char sleep_time[6];
+    bool alm_enabled;
+} AlmRoom;
 
 typedef struct {
-    bool connected_to_broker;
+    AlmRoom alm_room_state;
+    RGB base_color;
+    uint8_t room_id;
+} RoomState;
+
+typedef struct {
+    union {
+        struct {
+            bool connected_to_broker;
+        } status;
+
+        struct {
+            // No fields needed
+        } get_main_state_req;
+        struct {
+            RoomState room_state[ROOMS_TO_SEND];
+        } get_main_state_res;
+    };
 } AppPayload;
 
 typedef struct {
@@ -136,6 +164,7 @@ DeviceType device_from_string(const char *s);
 MainAction main_action_from_string(const char *s);
 LightAction light_action_from_string(const char *s);
 OccAction occ_action_from_string(const char *s);
+AppAction app_action_from_string(const char *s);
 
 /*
     Turns enumerations found within QueueMessage struct into corresponding strings

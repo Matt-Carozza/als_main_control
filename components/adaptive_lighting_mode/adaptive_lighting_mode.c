@@ -15,10 +15,10 @@ typedef struct {
     uint16_t wake_minutes;
     uint16_t awake_period;
     bool is_enabled;
-} AlmRoom;
+} AlmRoomInternal;
 
 typedef struct {
-    AlmRoom room_state[MAX_ROOMS];
+    AlmRoomInternal room_state[MAX_ROOMS];
     uint16_t system_time;
     bool task_running;
 } AlmState;
@@ -53,7 +53,7 @@ static void alm_task_set_idle(AlmState* state);
 // ===== State Getters =====
 // !!!!! Mutex Unsafe !!!!!
 static AlmState alm_get_snapshot_unsafe();
-static AlmRoom alm_room_get_unsafe(uint8_t room_id);
+static AlmRoomInternal alm_room_get_unsafe(uint8_t room_id);
 static RGB alm_room_color_before_enable_get_unsafe(uint8_t room_id);
 static bool alm_room_is_enabled_unsafe(uint8_t room_id);
 static uint16_t alm_system_time_get_unsafe();
@@ -62,7 +62,7 @@ static bool alm_task_is_running_unsafe();
 
 // ------ Mutex Safety ------ 
 static AlmState alm_get_snapshot();
-static AlmRoom alm_room_get(uint8_t room_id);
+static AlmRoomInternal alm_room_get(uint8_t room_id);
 static RGB alm_room_color_before_enable_get(uint8_t room_id);
 static bool alm_room_is_enabled(uint8_t room_id);
 static uint16_t alm_system_time_get();
@@ -70,9 +70,10 @@ static bool alm_task_is_running();
 static uint8_t alm_room_count_get();
 
 // ===== Pure functions =====
-static float alm_room_compute_position(const AlmRoom* room, uint16_t time);
+static float alm_room_compute_position(const AlmRoomInternal* room, uint16_t time);
 static float alm_room_compute_color_temperature(float pos);
 static bool hhmm_to_minutes(const char hhmm[6], uint16_t* total_minutes);
+static bool minutes_to_hhmm(uint16_t total_minutes, char hhmm[6]); // Might need arg type changed
 
 
 // ===== Initializers =====
@@ -91,16 +92,17 @@ static void update_light_by_rgb(uint8_t room_id, RGB rgb);
 static void update_lights_power_off(uint8_t room_id);
 
 
+void adaptive_lighting_mode_init() {
+    if (alm_state_mutex == NULL) {
+        alm_state_mutex = xSemaphoreCreateMutex();
+    }
+}
+
 void adaptive_lighting_mode_enable(const uint8_t room_id, 
     const char wake_time[6], 
     const char sleep_time[6],
     const char current_time[6]) {
     ESP_LOGI(TAG, "ENABLE");
-    
-    // Maybe move to general init
-    if (alm_state_mutex == NULL) {
-        alm_state_mutex = xSemaphoreCreateMutex();
-    }
 
     alm_wake_and_sleep_init(room_id, wake_time, sleep_time, current_time);
 
@@ -136,9 +138,26 @@ void adaptive_lighting_mode_disable(const uint8_t room_id) {
                         alm_room_color_before_enable_get(room_id));
 }
 
+bool adaptive_lighting_mode_room_state_get(uint8_t room_id, AlmRoom* out) {
+    if (out == NULL) return false;
+
+    const AlmRoomInternal room = alm_room_get(room_id);
+    out->alm_enabled = room.is_enabled;
+
+    if (!out->alm_enabled) return true; // If false, no wake and sleep time will be input
+
+    if (!minutes_to_hhmm(room.wake_minutes, out->wake_time)) return false;
+
+    uint16_t sleep_total_minutes = (room.wake_minutes + room.awake_period) % DAY_IN_MINUTES;
+    if (!minutes_to_hhmm(sleep_total_minutes, out->sleep_time)) return false;
+
+    return true;
+}
+
 static void adaptive_lighting_mode(void *pvParameters) {
     const TickType_t x_frequency = pdMS_TO_TICKS(60000);
     TickType_t x_last_wake_time = xTaskGetTickCount();
+    bool was_running = false;
 
     static uint16_t room_last_color_temp_sent[MAX_ROOMS] = {0};
     static bool room_light_status[MAX_ROOMS];
@@ -147,18 +166,24 @@ static void adaptive_lighting_mode(void *pvParameters) {
     }
 
     while (1) {
-        alm_system_time_increment(&s_state);
-
         const uint16_t current_time = alm_system_time_get();
         const bool task_running = alm_task_is_running();
+        
+        if (task_running && !was_running) {
+            x_last_wake_time = xTaskGetTickCount();
+            ESP_LOGI(TAG, "Resetting timer");
+        }
+        was_running = task_running;
 
         if (!task_running) {
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
+        alm_system_time_increment(&s_state);
+
         for (size_t room_id = 0; room_id < MAX_ROOMS; room_id++) {
-            const AlmRoom room = alm_room_get(room_id);
+            const AlmRoomInternal room = alm_room_get(room_id);
             if (!room.is_enabled) continue;
 
             float current_pos = alm_room_compute_position(&room, current_time);
@@ -394,7 +419,7 @@ static AlmState alm_get_snapshot_unsafe() {
     return s_state;
 }
 
-static AlmRoom alm_room_get_unsafe(uint8_t room_id) {
+static AlmRoomInternal alm_room_get_unsafe(uint8_t room_id) {
     return s_state.room_state[room_id];
 }
 
@@ -427,9 +452,9 @@ static AlmState alm_get_snapshot() {
     return snapshot;
 }
 
-static AlmRoom alm_room_get(uint8_t room_id) {
+static AlmRoomInternal alm_room_get(uint8_t room_id) {
     xSemaphoreTake(alm_state_mutex, portMAX_DELAY);
-    AlmRoom room =  alm_room_get_unsafe(room_id);
+    AlmRoomInternal room = alm_room_get_unsafe(room_id);
     xSemaphoreGive(alm_state_mutex);
     return room;
 }
@@ -472,7 +497,7 @@ static uint8_t alm_room_count_get() {
 }
 
 // ===== Pure functions =====
-static float alm_room_compute_position(const AlmRoom* room, uint16_t time) {
+static float alm_room_compute_position(const AlmRoomInternal* room, uint16_t time) {
     uint16_t raw_time = time % DAY_IN_MINUTES;
     uint16_t adjusted_time = raw_time;
     if (raw_time < room->wake_minutes)
@@ -496,4 +521,12 @@ static bool hhmm_to_minutes(const char hhmm[6], uint16_t* total_minutes) {
     } else {
         return false;
     }
+}
+
+static bool minutes_to_hhmm(uint16_t total_minutes, char hhmm[6]) {
+    uint8_t hours = total_minutes / 60;
+    if (hours >= 24) return false;
+    uint8_t minutes = total_minutes % 60;
+    snprintf(hhmm, 6, "%02u:%02u", hours, minutes);
+    return true; 
 }
