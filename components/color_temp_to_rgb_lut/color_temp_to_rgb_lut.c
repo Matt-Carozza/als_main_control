@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include "color_temp_to_rgb_lut.h"
 
 #define LUT_SIZE 39U
@@ -50,6 +51,8 @@ static const RGB table[LUT_SIZE] = {
 
 static RGBResult rgb_false_result();
 
+static uint8_t gamma_correct(uint8_t value);
+
 RGBResult color_temp_to_rgb(uint16_t color_temp) {
     RGBResult rgb;
     if (color_temp > MAX_COLOR_TEMP || color_temp < MIN_COLOR_TEMP)
@@ -62,6 +65,10 @@ RGBResult color_temp_to_rgb(uint16_t color_temp) {
 
     rgb.success = true;
     rgb.value = table[index];
+    
+    rgb.value.r = gamma_correct(rgb.value.r);
+    rgb.value.g = gamma_correct(rgb.value.g);
+    rgb.value.b = gamma_correct(rgb.value.b);
 
     return rgb;
 }
@@ -71,4 +78,8 @@ static RGBResult rgb_false_result() {
     return (RGBResult) {
         .success = false
     };
+}
+
+static uint8_t gamma_correct(uint8_t value) {
+    return (uint8_t)(pow(value / 255.0, 2.2) * 255);
 }
