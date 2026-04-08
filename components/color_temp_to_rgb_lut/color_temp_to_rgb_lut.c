@@ -2,12 +2,19 @@
 #include <math.h>
 #include "color_temp_to_rgb_lut.h"
 
-#define LUT_SIZE 39U
+#define LUT_SIZE ((MAX_COLOR_TEMP - MIN_COLOR_TEMP) / 100) + 1
 #define OFFSET (MIN_COLOR_TEMP / 100)
 
 static const char* TAG = "KELVIN_2_RGB_LUT";
 
 static const RGB table[LUT_SIZE] = {
+    {255, 138, 18},  // 2000K
+    {255, 142, 33},  // 2100K
+    {255, 147, 44},  // 2200K
+    {255, 152, 54},  // 2300K
+    {255, 157, 63},  // 2400K
+    {255, 161, 72},  // 2500K
+    {255, 165, 79},  // 2600K
     {255, 169, 87},  // 2700K
     {255, 173, 94},  // 2800K
     {255, 177, 101}, // 2900K
@@ -81,5 +88,5 @@ static RGBResult rgb_false_result() {
 }
 
 static uint8_t gamma_correct(uint8_t value) {
-    return (uint8_t)(pow(value / 255.0, 2.2) * 255);
+    return (uint8_t)(pow(value / 255.0, 3) * 255);
 }
