@@ -62,6 +62,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         esp_mqtt_client_subscribe(client, "/als/status/heartbeat", 1);
         esp_mqtt_client_subscribe(client, "/als/status/occ/1", 1);
         esp_mqtt_client_subscribe(client, "/als/status/day/1", 1);
+        esp_mqtt_client_subscribe(client, "/als/camera", 1);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -78,7 +79,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event_info->msg_id);
         break;
     case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+        // ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         message_router_push_wire(event_info->data);
         break;
     case MQTT_EVENT_ERROR:
@@ -100,7 +101,7 @@ static void mqtt_app_start(void)
 {
     esp_wifi_set_ps(WIFI_PS_NONE);
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = PUBLIC_BROKER_URL,
+        .broker.address.uri = LOCAL_BROKER_URL 
     };
 #if CONFIG_BROKER_URL_FROM_STDIN
     char line[128];

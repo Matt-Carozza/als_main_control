@@ -9,11 +9,17 @@
 #define MAX_ROOMS 256U
 #define ROOMS_TO_SEND 2U // 2 Is needed for Demo Day
 
+
+#define CAM_RESOLUTION 64U
+#define PIXEL_MAX_BIN_SIZE 2
+#define FRAME_SIDE_LENGTH 8
+
 typedef enum {
     ORIGIN_MAIN,
     ORIGIN_APP,
     ORIGIN_OCC_SENSOR,
     ORIGIN_DAY_SENSOR,
+    ORIGIN_CAMERA,
     ORIGIN_UKNOWN
 } MessageOrigin;
 
@@ -28,6 +34,7 @@ typedef enum {
 typedef enum {
     APP_STATUS,
     APP_GET_MAIN_STATE,
+    APP_SEND_FRAME,
     APP_UNKNOWN
 } AppAction;
 
@@ -124,6 +131,10 @@ typedef struct {
         struct {
             RoomState room_state[ROOMS_TO_SEND];
         } get_main_state_res;
+        struct {
+            uint8_t pixel_data[CAM_RESOLUTION];
+            uint8_t room_id;
+        } send_frame;
     };
 } AppPayload;
 

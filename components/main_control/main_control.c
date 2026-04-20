@@ -19,25 +19,39 @@ void main_control_handle(const QueueMessage *msg) {
             break;
             
         case MAIN_OCCUPANCY_UPDATE: {
-            QueueMessage light_msg = {
+            QueueMessage light_msg1 = {
                 .origin = ORIGIN_MAIN,
                 .device = DEVICE_LIGHT,
                 .light.action = LIGHT_UPDATE_STATE,
                 .light.payload.state_update = {
-                    .room_id = msg->main.payload.occupancy_update.room_id,
+                    .room_id = 1,
+                    .has_enabled = true
+                }
+            };
+            QueueMessage light_msg2 = {
+                .origin = ORIGIN_MAIN,
+                .device = DEVICE_LIGHT,
+                .light.action = LIGHT_UPDATE_STATE,
+                .light.payload.state_update = {
+                    .room_id = 2,
                     .has_enabled = true
                 }
             };
 
             if (msg->main.payload.occupancy_update.occupied) {
-                light_msg.light.payload.state_update.enabled = true;
+                light_msg1.light.payload.state_update.enabled = true;
+                light_msg2.light.payload.state_update.enabled = true;
                 ESP_LOGD(TAG, "Room occupied again, turning on lights");
             } else {
-                light_msg.light.payload.state_update.enabled = false;
+                light_msg1.light.payload.state_update.enabled = false;
+                light_msg2.light.payload.state_update.enabled = false;
                 ESP_LOGD(TAG, "Room is unoccupied, turning off lights");
             }
             
-            if (message_router_push_local(&light_msg) != pdPASS) { 
+            if (message_router_push_local(&light_msg1) != pdPASS) { 
+                ESP_LOGE(TAG, "Failed to send message to queue");
+            } 
+            if (message_router_push_local(&light_msg2) != pdPASS) { 
                 ESP_LOGE(TAG, "Failed to send message to queue");
             } 
             break;

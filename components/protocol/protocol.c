@@ -9,6 +9,8 @@ static const char *TAG = "PROTOCOL";
  * Parsers
 */
 static bool parse_app_message(cJSON *root, QueueMessage *out);
+static bool parse_app_send_frame(cJSON *root, QueueMessage *out);
+
 // Main
 static bool parse_main_message(cJSON *root, QueueMessage *out);
 static bool parse_main_heartbeat_update(cJSON *root, QueueMessage *out);
@@ -45,6 +47,7 @@ static bool get_u32(cJSON *obj, const char* key, uint32_t *out);
 static bool get_bool(cJSON *obj, const char* key, bool *out);
 static bool get_time_hhmm(cJSON *obj, const char* key, char out[6]);
 static bool get_float(cJSON *obj, const char* key, float *out);
+static bool get_camera_frame(cJSON *obj, const char* key, uint8_t out[CAM_RESOLUTION]);
 
 
 bool parse_broker_message(const char* json, QueueMessage *out) {
@@ -103,6 +106,9 @@ static bool parse_app_message(cJSON *root, QueueMessage *out) {
             // No payload to be parsed
             return true;
             break;
+        case APP_SEND_FRAME:
+            return parse_app_send_frame(root, out);
+            break;
         case APP_STATUS:
             ESP_LOGE(TAG, "Command APP_STATUS isn't meant to be parsed");
             return false;
@@ -110,6 +116,14 @@ static bool parse_app_message(cJSON *root, QueueMessage *out) {
             ESP_LOGE(TAG, "Unknown app action: %s", action);
             return false;
     }
+}
+
+static bool parse_app_send_frame(cJSON *root, QueueMessage *out) {
+    cJSON *payload = cJSON_GetObjectItem(root, "payload");
+    if (!cJSON_IsObject(payload)) return false;
+    
+    return get_u8(payload, "room_id", &out->app.payload.send_frame.room_id) &&
+        get_camera_frame(payload, "pixels", out->app.payload.send_frame.pixel_data);
 }
 
 static bool parse_main_message(cJSON *root, QueueMessage *out) {
@@ -471,6 +485,7 @@ OccAction occ_action_from_string(const char *s) {
 AppAction app_action_from_string(const char *s) {
     if (!strcmp(s, "APP_STATUS")) return APP_STATUS;
     if (!strcmp(s, "GET_MAIN_STATE")) return APP_GET_MAIN_STATE;
+    if (!strcmp(s, "SEND_FRAME")) return APP_SEND_FRAME;
     return APP_UNKNOWN;
 }
 
@@ -485,6 +500,8 @@ const char* origin_to_string(MessageOrigin origin) {
             return "OCC";
         case ORIGIN_DAY_SENSOR:
             return "DAY";
+        case ORIGIN_CAMERA:
+            return "CAMERA";
         case ORIGIN_UKNOWN:
             return "UNKNOWN";
         default:
@@ -615,4 +632,27 @@ static bool get_time_hhmm(cJSON *obj, const char* key, char out[6]) {
 
     memcpy(out, s, 6);
     return true;
+}
+
+static bool get_camera_frame(cJSON *obj, const char* key, uint8_t out[CAM_RESOLUTION]) {
+    cJSON *item = cJSON_GetObjectItem(obj, key);
+    if (!cJSON_IsArray(item)) return false;
+
+    if (cJSON_GetArraySize(item) != CAM_RESOLUTION) {
+        ESP_LOGE(TAG, "Array size does not match resolution");
+        return false;
+    }
+
+    cJSON *pixel = NULL;
+    size_t count = 0;
+    cJSON_ArrayForEach(pixel, item) {
+        if (count >= CAM_RESOLUTION) break;
+        if (!cJSON_IsNumber(pixel)) return false;
+
+        double val = cJSON_GetNumberValue(pixel);
+        if (val < 0 || val > PIXEL_MAX_BIN_SIZE) return false;
+
+        out[count++] = (uint8_t)val;
+    }
+    return (count == CAM_RESOLUTION);
 }
